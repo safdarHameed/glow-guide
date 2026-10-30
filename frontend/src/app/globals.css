@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+/*
+  GlowGuide design tokens
+  Core palette from the blueprint, extended into tonal scales:
+  Brand #24695C · Sun #D9822F · Sky #3F87B5 · Rose #C4504B · Ink #17262A · BG #F3F5F4
+  Score thresholds everywhere: 70+ brand, 50–69 sun, below 50 rose.
+*/
+@theme inline {
+  --font-sans: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-lora), ui-serif, Georgia, serif;
+
+  --container-page: 1400px;
+
+  --color-brand-50: #eef6f3;
+  --color-brand-100: #d5ebe4;
+  --color-brand-200: #abd6c9;
+  --color-brand-300: #74b8a5;
+  --color-brand-400: #3f927d;
+  --color-brand-500: #24695c;
+  --color-brand-600: #1d574c;
+  --color-brand-700: #17463e;
+  --color-brand-800: #113630;
+  --color-brand-900: #0b2521;
+
+  --color-sun-50: #fdf5ec;
+  --color-sun-100: #fae6cd;
+  --color-sun-200: #f4cc9b;
+  --color-sun-300: #ecae67;
+  --color-sun-500: #d9822f;
+  --color-sun-600: #b96a22;
+  --color-sun-700: #93531b;
+
+  --color-sky-50: #edf5fa;
+  --color-sky-100: #d5e7f3;
+  --color-sky-200: #aacfe6;
+  --color-sky-300: #78b1d4;
+  --color-sky-500: #3f87b5;
+  --color-sky-600: #326d93;
+
+  --color-rose-50: #fbefee;
+  --color-rose-100: #f5d6d4;
+  --color-rose-300: #e0928e;
+  --color-rose-500: #c4504b;
+  --color-rose-600: #a43f3b;
+
+  --color-ink: #17262a;
+  --color-ink-soft: #3d4f53;
+  --color-muted: #6a7a7d;
+  --color-line: #e1e7e5;
+  --color-canvas: #f3f5f4;
+  --color-surface: #ffffff;
+
+  --animate-marquee: marquee 45s linear infinite;
+  --animate-float: float 7s ease-in-out infinite;
+  --animate-float-slow: float 9s ease-in-out infinite;
+  --animate-blob: blob 18s ease-in-out infinite;
+  --animate-scan: scan 3.2s ease-in-out infinite;
+  --animate-shimmer: shimmer 2.6s linear infinite;
+
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+  @keyframes blob {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(40px, -30px) scale(1.08); }
+    66% { transform: translate(-30px, 20px) scale(0.95); }
+  }
+  @keyframes scan {
+    0% { top: 8%; opacity: 0; }
+    15% { opacity: 1; }
+    85% { opacity: 1; }
+    100% { top: 88%; opacity: 0; }
+  }
+  @keyframes shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-brand-200);
+  color: var(--color-brand-900);
+}
+
+section[id] {
+  scroll-margin-top: 88px;
+}
+
+.text-gradient-weather {
+  background: linear-gradient(100deg, var(--color-sun-500) 0%, var(--color-rose-500) 55%, var(--color-sky-500) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.bg-grid {
+  background-image:
+    linear-gradient(to right, rgb(23 38 42 / 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(23 38 42 / 0.05) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+.shimmer-btn {
+  background-image: linear-gradient(110deg, transparent 35%, rgb(255 255 255 / 0.28) 50%, transparent 65%);
+  background-size: 200% 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
