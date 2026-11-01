@@ -1,6 +1,14 @@
 "use client";
 
-import { Camera, CheckCircle2, CircleAlert, ImageUp, Loader2, RefreshCw, SwitchCamera } from "lucide-react";
+import {
+  Camera,
+  CheckCircle2,
+  CircleAlert,
+  ImageUp,
+  Loader2,
+  RefreshCw,
+  SwitchCamera,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 
@@ -13,7 +21,13 @@ const MAX_BYTES = 10 * 1024 * 1024;
  * Camera or upload, ending in a photo preview with Retake / Use this photo.
  * The raw image never leaves this component except through onUse (and is never stored).
  */
-export function ScanCapture({ enabled, onUse }: { enabled: boolean; onUse: (photo: string) => void }) {
+export function ScanCapture({
+  enabled,
+  onUse,
+}: {
+  enabled: boolean;
+  onUse: (photo: string) => void;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [cam, setCam] = useState<CamState>("off");
@@ -37,7 +51,14 @@ export function ScanCapture({ enabled, onUse }: { enabled: boolean; onUse: (phot
     let cancelled = false;
     setCam("starting");
     navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: facing, width: { ideal: 1280 } }, audio: false })
+      .getUserMedia({
+        video: {
+          facingMode: facing,
+          width: { ideal: 1920 },
+          height: { ideal: 1440 },
+        },
+        audio: false,
+      })
       .then((s) => {
         if (cancelled) return s.getTracks().forEach((t) => t.stop());
         stream = s;
@@ -51,19 +72,91 @@ export function ScanCapture({ enabled, onUse }: { enabled: boolean; onUse: (phot
     };
   }, [enabled, facing, photo]);
 
-  // Quality checks run in the browser on the feed; simulated here until face detection is wired in.
+  // Check real light levels and, where supported, the browser's on-device face detector.
   useEffect(() => {
     if (cam !== "live") return;
-    setChecks([
-      { label: "Lighting good", ok: true },
-      { label: "Face centered", ok: false },
-      { label: "Move a little closer", ok: false },
-    ]);
-    const t1 = setTimeout(() => setChecks((c) => c.map((x, i) => (i === 1 ? { ...x, ok: true } : x))), 1500);
-    const t2 = setTimeout(() => setChecks((c) => c.map((x, i) => (i === 2 ? { label: "Distance good", ok: true } : x))), 3000);
+    type Detection = {
+      boundingBox: { x: number; y: number; width: number; height: number };
+    };
+    const Detector = (
+      window as unknown as {
+        FaceDetector?: new (options: { fastMode: boolean }) => {
+          detect: (source: HTMLVideoElement) => Promise<Detection[]>;
+        };
+      }
+    ).FaceDetector;
+    const detector = Detector ? new Detector({ fastMode: true }) : null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 80;
+    canvas.height = 80;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    async function check() {
+      const video = videoRef.current;
+      if (!video || !context || !active) return;
+      if (video.readyState >= 2) {
+        context.drawImage(video, 0, 0, 80, 80);
+        const pixels = context.getImageData(0, 0, 80, 80).data;
+        let brightness = 0;
+        for (let i = 0; i < pixels.length; i += 4)
+          brightness +=
+            pixels[i]! * 0.2126 +
+            pixels[i + 1]! * 0.7152 +
+            pixels[i + 2]! * 0.0722;
+        brightness /= pixels.length / 4;
+        let faces: Detection[] | null = null;
+        if (detector) {
+          try {
+            faces = await detector.detect(video);
+          } catch {
+            /* Browser detection unavailable: manual alignment. */
+          }
+        }
+        if (!active) return;
+        const face = faces?.length === 1 ? faces[0]!.boundingBox : null;
+        const centered = face
+          ? Math.abs((face.x + face.width / 2) / video.videoWidth - 0.5) < 0.15
+          : faces === null;
+        const close = face
+          ? face.width / video.videoWidth >= 0.5
+          : faces === null;
+        setChecks([
+          {
+            label:
+              brightness < 55
+                ? "Face brighter light"
+                : brightness > 220
+                  ? "Reduce harsh light"
+                  : "Lighting good",
+            ok: brightness >= 55 && brightness <= 220,
+          },
+          {
+            label:
+              faces === null
+                ? "Center face in oval · manual check"
+                : centered
+                  ? "Face centered"
+                  : "Center one face in oval",
+            ok: centered,
+          },
+          {
+            label:
+              faces === null
+                ? "Keep face close · manual check"
+                : close
+                  ? "Distance good"
+                  : "Move a little closer",
+            ok: close,
+          },
+        ]);
+      }
+      timer = setTimeout(() => void check(), 500);
+    }
+    void check();
     return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
+      active = false;
+      clearTimeout(timer);
     };
   }, [cam]);
 
@@ -88,8 +181,12 @@ export function ScanCapture({ enabled, onUse }: { enabled: boolean; onUse: (phot
   function onFile(file: File | undefined) {
     setUploadError(null);
     if (!file) return;
-    if (!["image/jpeg", "image/png"].includes(file.type)) return setUploadError("Please choose a JPG or PNG photo.");
-    if (file.size > MAX_BYTES) return setUploadError("That photo is over 10 MB. Please choose a smaller one.");
+    if (!["image/jpeg", "image/png"].includes(file.type))
+      return setUploadError("Please choose a JPG or PNG photo.");
+    if (file.size > MAX_BYTES)
+      return setUploadError(
+        "That photo is over 10 MB. Please choose a smaller one.",
+      );
     const reader = new FileReader();
     reader.onload = () => setPhoto(reader.result as string);
     reader.readAsDataURL(file);
@@ -112,7 +209,11 @@ export function ScanCapture({ enabled, onUse }: { enabled: boolean; onUse: (phot
     return (
       <div>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={photo} alt="Your photo" className="mx-auto aspect-[3/4] max-h-[480px] w-full rounded-3xl bg-ink object-cover" />
+        <img
+          src={photo}
+          alt="Your photo"
+          className="mx-auto aspect-[3/4] max-h-[480px] w-full rounded-3xl bg-ink object-cover"
+        />
         <div className="mt-4 flex flex-wrap justify-center gap-2">
           <Button variant="secondary" onClick={() => setPhoto(null)}>
             <RefreshCw size={16} /> Retake
@@ -134,13 +235,22 @@ export function ScanCapture({ enabled, onUse }: { enabled: boolean; onUse: (phot
           <span className="grid h-14 w-14 place-items-center rounded-2xl bg-white text-brand-500 shadow-sm">
             <ImageUp size={26} />
           </span>
-          <span className="text-base font-semibold text-ink">Upload a selfie</span>
-          <span className="text-sm text-muted">JPG or PNG, up to 10 MB. Face the light, no glasses.</span>
+          <span className="text-base font-semibold text-ink">
+            Upload a selfie
+          </span>
+          <span className="text-sm text-muted">
+            JPG or PNG, up to 10 MB. Face the light, no glasses.
+          </span>
         </button>
         <p className="mt-3 text-center text-xs text-muted">
-          Camera access is off. To use the camera, allow it in your browser&apos;s site settings and reload this page.
+          Camera access is off. To use the camera, allow it in your
+          browser&apos;s site settings and reload this page.
         </p>
-        {uploadError && <p className="mt-2 text-center text-sm text-rose-600">{uploadError}</p>}
+        {uploadError && (
+          <p className="mt-2 text-center text-sm text-rose-600">
+            {uploadError}
+          </p>
+        )}
         {fileInput}
       </div>
     );
@@ -163,7 +273,9 @@ export function ScanCapture({ enabled, onUse }: { enabled: boolean; onUse: (phot
                 <Loader2 size={16} className="animate-spin" /> Starting camera…
               </span>
             ) : (
-              <span className="max-w-[16rem]">Tick the consent box to turn on the camera.</span>
+              <span className="max-w-[16rem]">
+                Tick the consent box to turn on the camera.
+              </span>
             )}
           </div>
         )}
@@ -182,7 +294,8 @@ export function ScanCapture({ enabled, onUse }: { enabled: boolean; onUse: (phot
                   c.ok ? "bg-brand-500 text-white" : "bg-sun-500 text-white"
                 }`}
               >
-                {c.ok ? <CheckCircle2 size={12} /> : <CircleAlert size={12} />} {c.label}
+                {c.ok ? <CheckCircle2 size={12} /> : <CircleAlert size={12} />}{" "}
+                {c.label}
               </span>
             ))}
           </div>
@@ -190,7 +303,11 @@ export function ScanCapture({ enabled, onUse }: { enabled: boolean; onUse: (phot
       </div>
 
       <div className="mt-4 flex items-center justify-center gap-3">
-        <Button variant="secondary" onClick={() => fileRef.current?.click()} disabled={!enabled}>
+        <Button
+          variant="secondary"
+          onClick={() => fileRef.current?.click()}
+          disabled={!enabled}
+        >
           <ImageUp size={16} /> Upload
         </Button>
         <button
@@ -201,11 +318,19 @@ export function ScanCapture({ enabled, onUse }: { enabled: boolean; onUse: (phot
         >
           <Camera size={24} />
         </button>
-        <Button variant="secondary" onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))} disabled={cam !== "live"}>
+        <Button
+          variant="secondary"
+          onClick={() =>
+            setFacing((f) => (f === "user" ? "environment" : "user"))
+          }
+          disabled={cam !== "live"}
+        >
           <SwitchCamera size={16} /> Switch
         </Button>
       </div>
-      {uploadError && <p className="mt-2 text-center text-sm text-rose-600">{uploadError}</p>}
+      {uploadError && (
+        <p className="mt-2 text-center text-sm text-rose-600">{uploadError}</p>
+      )}
       {fileInput}
     </div>
   );

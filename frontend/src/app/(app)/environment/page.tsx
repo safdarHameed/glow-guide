@@ -1,63 +1,105 @@
 "use client";
 
 import Link from "next/link";
-import { CheckCircle2, Droplets, MapPin, Plane, Sun, Thermometer, Wind } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+  CheckCircle2,
+  Droplets,
+  MapPin,
+  Plane,
+  Sun,
+  Thermometer,
+  Wind,
+} from "lucide-react";
+import { useState } from "react";
 import { CityPicker } from "@/components/app/CityPicker";
-import { explainers, type MetricKey } from "@/components/environment/explainers";
+import {
+  explainers,
+  type MetricKey,
+} from "@/components/environment/explainers";
 import { useAppState } from "@/components/providers/AppStateProvider";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, PageHeader, Tag } from "@/components/ui/Kit";
 import { Modal } from "@/components/ui/Overlay";
-import { aqiLabel, forecast, skinAdvice, uvHourly, uvLabel, type City } from "@/lib/mock-data";
+import { aqiLabel, uvLabel, skinAdvice } from "@/lib/domain";
 
-const base = forecast[0]!;
-
-/** Applies a forecast day's change (relative to today in the sample data) to the selected city. */
-function cityForDay(city: City, dayIndex: number): City {
-  const day = forecast[dayIndex]!;
-  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-  return {
-    ...city,
-    temp: city.temp + (day.temp - base.temp),
-    feelsLike: city.feelsLike + (day.temp - base.temp),
-    humidity: clamp(city.humidity + (day.humidity - base.humidity), 5, 100),
-    uv: clamp(city.uv + (day.uv - base.uv), 0, 12),
-    aqi: city.aqi === null ? null : Math.max(5, Math.round(city.aqi * (day.aqi / base.aqi))),
-    pm25: city.pm25 === null ? null : Math.max(1, Math.round(city.pm25 * (day.aqi / base.aqi))),
-  };
-}
-
-const humidityLabel = (h: number) => (h >= 60 ? "Humid" : h <= 35 ? "Dry" : "Comfortable");
-const dayNames = ["Wednesday, Oct 28", "Thursday, Oct 29", "Friday, Oct 30", "Saturday, Oct 31", "Sunday, Nov 1"];
-
+const humidityLabel = (h: number) =>
+  h >= 60 ? "Humid" : h <= 35 ? "Dry" : "Comfortable";
 export default function EnvironmentPage() {
-  const { city, profile } = useAppState();
+  const { city, profile, environment, environmentError, plan } = useAppState();
   const [dayIndex, setDayIndex] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [explainer, setExplainer] = useState<MetricKey | null>(null);
   const [hoverHour, setHoverHour] = useState<number | null>(null);
 
-  const day = useMemo(() => cityForDay(city, dayIndex), [city, dayIndex]);
-  const advice = skinAdvice(day);
+  const forecast = environment?.forecast ?? [];
+  const selectedDay = forecast[dayIndex] ?? forecast[0];
+  const day =
+    dayIndex === 0 || !selectedDay
+      ? city
+      : { ...city, ...selectedDay, feelsLike: selectedDay.temp, pm25: null };
+  const advice = skinAdvice(
+    day,
+    profile.skinTypeOverride ?? "",
+    [...plan.morning, ...plan.evening].map((s) => s.category),
+  );
   const aqi = aqiLabel(day.aqi);
-  const fmt = (c: number) => (profile.units === "F" ? `${Math.round((c * 9) / 5 + 32)}°F` : `${c}°C`);
-
-  // Scale the sample hourly curve to this day's peak UV.
-  const hourly = uvHourly.map((h) => ({ ...h, uv: Math.round((h.uv / 8) * day.uv) }));
-  const peak = Math.max(...hourly.map((h) => h.uv));
+  const fmt = (c: number) =>
+    profile.units === "F" ? `${Math.round((c * 9) / 5 + 32)}°F` : `${c}°C`;
+  const hourly = selectedDay?.hourly ?? [];
+  const peak = Math.max(0, ...hourly.map((h) => h.uv));
   const isPeak = (uv: number) => peak > 0 && uv >= peak - 0.5;
-
-  const cards: { key: MetricKey; label: string; icon: React.ComponentType<{ size?: number; className?: string }>; value: string; sub: string; tone: string }[] = [
-    { key: "temp", label: "Temperature", icon: Thermometer, value: fmt(day.temp), sub: `Feels like ${fmt(day.feelsLike)}`, tone: "text-sun-600 bg-sun-50" },
-    { key: "humidity", label: "Humidity", icon: Droplets, value: `${day.humidity}%`, sub: humidityLabel(day.humidity), tone: "text-sky-600 bg-sky-50" },
-    { key: "uv", label: "UV index", icon: Sun, value: String(day.uv), sub: `${uvLabel(day.uv)[0]!.toUpperCase()}${uvLabel(day.uv).slice(1)} · peak 12–2 pm`, tone: "text-sun-600 bg-sun-50" },
+  if (!environment)
+    return (
+      <>
+        <PageHeader
+          title="Environment"
+          context={environmentError || "Choose a city to see live conditions."}
+        />
+        <Button onClick={() => setPickerOpen(true)}>Choose city</Button>
+        <CityPicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
+      </>
+    );
+  const cards: {
+    key: MetricKey;
+    label: string;
+    icon: React.ComponentType<{ size?: number; className?: string }>;
+    value: string;
+    sub: string;
+    tone: string;
+  }[] = [
+    {
+      key: "temp",
+      label: "Temperature",
+      icon: Thermometer,
+      value: fmt(day.temp),
+      sub: `Feels like ${fmt(day.feelsLike)}`,
+      tone: "text-sun-600 bg-sun-50",
+    },
+    {
+      key: "humidity",
+      label: "Humidity",
+      icon: Droplets,
+      value: `${day.humidity}%`,
+      sub: humidityLabel(day.humidity),
+      tone: "text-sky-600 bg-sky-50",
+    },
+    {
+      key: "uv",
+      label: "UV index",
+      icon: Sun,
+      value: String(day.uv),
+      sub: `${uvLabel(day.uv)[0]!.toUpperCase()}${uvLabel(day.uv).slice(1)}`,
+      tone: "text-sun-600 bg-sun-50",
+    },
     {
       key: "aqi",
       label: "Air quality (AQI)",
       icon: Wind,
       value: day.aqi === null ? "—" : String(day.aqi),
-      sub: day.aqi === null ? "Air quality not available here" : `${aqi.label[0]!.toUpperCase()}${aqi.label.slice(1)} · PM2.5 ${day.pm25}`,
+      sub:
+        day.aqi === null
+          ? "Air quality not available here"
+          : `${aqi.label[0]!.toUpperCase()}${aqi.label.slice(1)}${day.pm25 === null ? "" : ` · PM2.5 ${day.pm25}`}`,
       tone: "text-rose-500 bg-rose-50",
     },
   ];
@@ -69,16 +111,26 @@ export default function EnvironmentPage() {
         context={
           <span className="flex flex-wrap items-center gap-x-2">
             <span className="flex items-center gap-1 font-medium text-ink">
-              <MapPin size={14} className="text-brand-500" /> {city.name}, {city.country}
+              <MapPin size={14} className="text-brand-500" /> {city.name},{" "}
+              {city.country}
             </span>
             <span>
-              {dayIndex === 0 ? "Now" : "Forecast"} · {dayNames[dayIndex]} · Source: Open-Meteo · updated 10 min ago
+              {dayIndex === 0 ? "Now" : "Forecast"} · {selectedDay?.date} ·
+              Source: {environment.source} · updated{" "}
+              {new Date(environment.updatedAt).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </span>
           </span>
         }
         actions={
           <>
-            <Button variant="secondary" size="sm" onClick={() => setPickerOpen(true)}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setPickerOpen(true)}
+            >
               <MapPin size={15} /> Change city
             </Button>
             <ButtonLink href="/trip" size="sm">
@@ -97,13 +149,17 @@ export default function EnvironmentPage() {
           >
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted">{c.label}</span>
-              <span className={`grid h-9 w-9 place-items-center rounded-xl ${c.tone}`}>
+              <span
+                className={`grid h-9 w-9 place-items-center rounded-xl ${c.tone}`}
+              >
                 <c.icon size={18} />
               </span>
             </div>
             <p className="mt-3 text-3xl font-semibold text-ink">{c.value}</p>
             <p className="mt-1 text-xs text-muted">{c.sub}</p>
-            <p className="mt-3 text-xs font-medium text-brand-600 opacity-0 transition-opacity group-hover:opacity-100">What does this mean?</p>
+            <p className="mt-3 text-xs font-medium text-brand-600 opacity-0 transition-opacity group-hover:opacity-100">
+              What does this mean?
+            </p>
           </button>
         ))}
       </div>
@@ -113,7 +169,9 @@ export default function EnvironmentPage() {
           <Card>
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <h2 className="font-semibold text-ink">UV through the day</h2>
-              <span className="text-xs text-muted">Hover or tap a bar for the exact value</span>
+              <span className="text-xs text-muted">
+                Hover or tap a bar for the exact value
+              </span>
             </div>
             <div className="relative mt-6 flex h-40 items-end gap-1.5 sm:gap-2">
               {hourly.map((h, i) => (
@@ -149,7 +207,8 @@ export default function EnvironmentPage() {
             </div>
             {peak > 0 && (
               <p className="mt-4 flex items-center gap-2 text-sm text-ink-soft">
-                <span className="h-3 w-3 rounded-sm bg-sun-500" /> Peak window 12–2 pm is used for your reapply reminder.
+                <span className="h-3 w-3 rounded-sm bg-sun-500" /> Highlighted
+                bars show the highest UV hours for this date.
               </p>
             )}
           </Card>
@@ -158,14 +217,16 @@ export default function EnvironmentPage() {
             <h2 className="font-semibold text-ink">5-day forecast</h2>
             <div className="mt-4 grid grid-cols-5 gap-2">
               {forecast.map((f, i) => {
-                const d = cityForDay(city, i);
+                const d = f;
                 return (
                   <button
                     key={f.day}
                     onClick={() => setDayIndex(i)}
                     aria-pressed={dayIndex === i}
                     className={`rounded-2xl p-3 text-center transition-colors ${
-                      dayIndex === i ? "bg-brand-500 text-white" : "bg-canvas text-ink hover:bg-brand-50"
+                      dayIndex === i
+                        ? "bg-brand-500 text-white"
+                        : "bg-canvas text-ink hover:bg-brand-50"
                     }`}
                   >
                     <p className="text-xs font-medium opacity-80">{f.day}</p>
@@ -183,8 +244,12 @@ export default function EnvironmentPage() {
         </div>
 
         <Card className="h-fit">
-          <h2 className="font-semibold text-ink">What this means for your skin</h2>
-          <p className="mt-1 text-xs text-muted">Simple rules from today&apos;s numbers, not guesses.</p>
+          <h2 className="font-semibold text-ink">
+            What this means for your skin
+          </h2>
+          <p className="mt-1 text-xs text-muted">
+            Simple rules from today&apos;s numbers, not guesses.
+          </p>
           <ul className="mt-5 space-y-3">
             {advice.map((a) => (
               <li key={a.key} className="rounded-2xl bg-canvas p-4">
@@ -192,11 +257,17 @@ export default function EnvironmentPage() {
                   <p className="font-medium text-ink">{a.title}</p>
                   <Link href={`/plan/current?highlight=${a.step}`}>
                     {a.inPlan ? (
-                      <Tag tone="brand" className="hover:ring-1 hover:ring-brand-300">
+                      <Tag
+                        tone="brand"
+                        className="hover:ring-1 hover:ring-brand-300"
+                      >
                         <CheckCircle2 size={12} /> In your plan
                       </Tag>
                     ) : (
-                      <Tag tone="sun" className="hover:ring-1 hover:ring-sun-300">
+                      <Tag
+                        tone="sun"
+                        className="hover:ring-1 hover:ring-sun-300"
+                      >
                         Not in your plan yet
                       </Tag>
                     )}
@@ -207,7 +278,8 @@ export default function EnvironmentPage() {
             ))}
             {day.aqi === null && (
               <li className="rounded-2xl border border-dashed border-line p-4 text-sm text-muted">
-                Air quality is not available here, so pollution advice is skipped.
+                Air quality is not available here, so pollution advice is
+                skipped.
               </li>
             )}
           </ul>
@@ -216,23 +288,38 @@ export default function EnvironmentPage() {
 
       <CityPicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
 
-      <Modal open={explainer !== null} onClose={() => setExplainer(null)} title={explainer ? explainers[explainer].title : ""}>
+      <Modal
+        open={explainer !== null}
+        onClose={() => setExplainer(null)}
+        title={explainer ? explainers[explainer].title : ""}
+      >
         {explainer && (
           <div className="space-y-5 text-sm">
             <p className="text-ink-soft">{explainers[explainer].meaning}</p>
             <div>
-              <p className="text-xs font-semibold tracking-wide text-muted uppercase">Scale</p>
+              <p className="text-xs font-semibold tracking-wide text-muted uppercase">
+                Scale
+              </p>
               <ul className="mt-2 space-y-1.5">
                 {explainers[explainer].bands.map((b) => (
-                  <li key={b.range} className="flex items-center justify-between rounded-xl bg-canvas px-3 py-2">
+                  <li
+                    key={b.range}
+                    className="flex items-center justify-between rounded-xl bg-canvas px-3 py-2"
+                  >
                     <span className="text-ink">{b.range}</span>
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${b.tone}`}>{b.label}</span>
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${b.tone}`}
+                    >
+                      {b.label}
+                    </span>
                   </li>
                 ))}
               </ul>
             </div>
             <div className="rounded-2xl bg-brand-50 p-4">
-              <p className="text-xs font-semibold tracking-wide text-brand-600 uppercase">Why it matters for skin</p>
+              <p className="text-xs font-semibold tracking-wide text-brand-600 uppercase">
+                Why it matters for skin
+              </p>
               <p className="mt-1 text-ink-soft">{explainers[explainer].skin}</p>
             </div>
           </div>

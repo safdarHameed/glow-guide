@@ -2,12 +2,29 @@
 
 import { MapPin, Plus, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useAppState } from "@/components/providers/AppStateProvider";
+import { useCitySearch } from "@/lib/useCitySearch";
 import { Chip } from "@/components/ui/Kit";
-import { cities, commonAvoid, concernOptions, formatPrice, products, type City, type Currency } from "@/lib/mock-data";
+import {
+  commonAvoid,
+  concernOptions,
+  formatPrice,
+  asCity,
+  type City,
+  type Currency,
+} from "@/lib/domain";
 
 /** Shared by onboarding (S03) and settings (S14): both edit the same profile fields. */
 
-export function ConcernPicker({ value, onChange, max = 3 }: { value: string[]; onChange: (v: string[]) => void; max?: number }) {
+export function ConcernPicker({
+  value,
+  onChange,
+  max = 3,
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+  max?: number;
+}) {
   const [hint, setHint] = useState(false);
   function toggle(c: string) {
     if (value.includes(c)) {
@@ -28,19 +45,33 @@ export function ConcernPicker({ value, onChange, max = 3 }: { value: string[]; o
           </Chip>
         ))}
       </div>
-      {hint && <p className="mt-2 text-xs font-medium text-sun-700">Pick up to {max}. Remove one to choose another.</p>}
+      {hint && (
+        <p className="mt-2 text-xs font-medium text-sun-700">
+          Pick up to {max}. Remove one to choose another.
+        </p>
+      )}
     </div>
   );
 }
 
-export function AvoidPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+export function AvoidPicker({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+}) {
   const [adding, setAdding] = useState(false);
   const [text, setText] = useState("");
-  const options = [...commonAvoid, ...value.filter((v) => !commonAvoid.includes(v))];
+  const options = [
+    ...commonAvoid,
+    ...value.filter((v) => !commonAvoid.includes(v)),
+  ];
 
   function add() {
     const t = text.trim();
-    if (t && !value.some((v) => v.toLowerCase() === t.toLowerCase())) onChange([...value, t]);
+    if (t && !value.some((v) => v.toLowerCase() === t.toLowerCase()))
+      onChange([...value, t]);
     setText("");
     setAdding(false);
   }
@@ -48,7 +79,15 @@ export function AvoidPicker({ value, onChange }: { value: string[]; onChange: (v
   return (
     <div className="flex flex-wrap items-center gap-2">
       {options.map((o) => (
-        <Chip key={o} selected={value.includes(o)} onClick={() => onChange(value.includes(o) ? value.filter((x) => x !== o) : [...value, o])}>
+        <Chip
+          key={o}
+          selected={value.includes(o)}
+          onClick={() =>
+            onChange(
+              value.includes(o) ? value.filter((x) => x !== o) : [...value, o],
+            )
+          }
+        >
           {o}
         </Chip>
       ))}
@@ -81,16 +120,27 @@ export function AvoidPicker({ value, onChange }: { value: string[]; onChange: (v
   );
 }
 
-const productNames = products.map((p) => `${p.brand} ${p.name}`);
-
-export function OwnedPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+export function OwnedPicker({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const { products } = useAppState();
+  const productNames = useMemo(
+    () => products.map((p) => `${p.brand} ${p.name}`),
+    [products],
+  );
   const [text, setText] = useState("");
   const [active, setActive] = useState(0);
   const suggestions = useMemo(() => {
     const q = text.trim().toLowerCase();
     if (q.length < 2) return [];
-    return productNames.filter((n) => n.toLowerCase().includes(q) && !value.includes(n)).slice(0, 5);
-  }, [text, value]);
+    return productNames
+      .filter((n) => n.toLowerCase().includes(q) && !value.includes(n))
+      .slice(0, 5);
+  }, [text, value, productNames]);
 
   function add(name: string) {
     const t = name.trim();
@@ -103,9 +153,17 @@ export function OwnedPicker({ value, onChange }: { value: string[]; onChange: (v
     <div>
       <div className="flex flex-wrap gap-2">
         {value.map((v) => (
-          <span key={v} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-brand-50 pr-1.5 pl-3.5 text-sm font-medium text-brand-700">
+          <span
+            key={v}
+            className="inline-flex h-9 items-center gap-1.5 rounded-full bg-brand-50 pr-1.5 pl-3.5 text-sm font-medium text-brand-700"
+          >
             {v}
-            <button type="button" onClick={() => onChange(value.filter((x) => x !== v))} aria-label={`Remove ${v}`} className="rounded-full p-1 hover:bg-brand-100">
+            <button
+              type="button"
+              onClick={() => onChange(value.filter((x) => x !== v))}
+              aria-label={`Remove ${v}`}
+              className="rounded-full p-1 hover:bg-brand-100"
+            >
               <X size={13} />
             </button>
           </span>
@@ -119,7 +177,8 @@ export function OwnedPicker({ value, onChange }: { value: string[]; onChange: (v
             setActive(0);
           }}
           onKeyDown={(e) => {
-            if (e.key === "ArrowDown") setActive((a) => Math.min(a + 1, suggestions.length - 1));
+            if (e.key === "ArrowDown")
+              setActive((a) => Math.min(a + 1, suggestions.length - 1));
             if (e.key === "ArrowUp") setActive((a) => Math.max(a - 1, 0));
             if (e.key === "Enter") {
               e.preventDefault();
@@ -146,7 +205,9 @@ export function OwnedPicker({ value, onChange }: { value: string[]; onChange: (v
           </ul>
         )}
       </div>
-      <p className="mt-1.5 text-xs text-muted">Press Enter to add. We won&apos;t recommend things you already have.</p>
+      <p className="mt-1.5 text-xs text-muted">
+        Press Enter to add. We won&apos;t recommend things you already have.
+      </p>
     </div>
   );
 }
@@ -164,7 +225,11 @@ export function BudgetPicker({
   min: number;
   max: number;
   currency: Currency;
-  onChange: (v: { mode: "product" | "routine"; min: number; max: number }) => void;
+  onChange: (v: {
+    mode: "product" | "routine";
+    min: number;
+    max: number;
+  }) => void;
 }) {
   return (
     <div>
@@ -192,7 +257,13 @@ export function BudgetPicker({
             max={BUDGET_MAX_PKR}
             step={500}
             value={min}
-            onChange={(e) => onChange({ mode, min: Math.min(Number(e.target.value), max - 500), max })}
+            onChange={(e) =>
+              onChange({
+                mode,
+                min: Math.min(Number(e.target.value), max - 500),
+                max,
+              })
+            }
             className="mt-1 w-full accent-brand-500"
           />
         </label>
@@ -204,7 +275,13 @@ export function BudgetPicker({
             max={BUDGET_MAX_PKR}
             step={500}
             value={max}
-            onChange={(e) => onChange({ mode, min, max: Math.max(Number(e.target.value), min + 500) })}
+            onChange={(e) =>
+              onChange({
+                mode,
+                min,
+                max: Math.max(Number(e.target.value), min + 500),
+              })
+            }
             className="mt-1 w-full accent-brand-500"
           />
         </label>
@@ -213,27 +290,45 @@ export function BudgetPicker({
   );
 }
 
-export function CitySearch({ onSelect, exclude, autoFocus }: { onSelect: (c: City) => void; exclude?: string; autoFocus?: boolean }) {
+export function CitySearch({
+  onSelect,
+  exclude,
+  autoFocus,
+}: {
+  onSelect: (c: City) => void;
+  exclude?: string;
+  autoFocus?: boolean;
+}) {
   const [q, setQ] = useState("");
-  const results = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    const pool = cities.filter((c) => c.id !== exclude);
-    return s ? pool.filter((c) => c.name.toLowerCase().startsWith(s) || c.country.toLowerCase().startsWith(s)) : pool.slice(0, 5);
-  }, [q, exclude]);
+  const { results: locations, error, loading } = useCitySearch(q);
+  const results = locations.filter((c) => c.id !== exclude).map(asCity);
 
   return (
     <div>
       <div className="relative">
-        <Search size={16} className="absolute top-1/2 left-4 -translate-y-1/2 text-muted" />
+        <Search
+          size={16}
+          className="absolute top-1/2 left-4 -translate-y-1/2 text-muted"
+        />
         <input
           autoFocus={autoFocus}
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && results[0] && onSelect(results[0])}
+          onKeyDown={(e) =>
+            e.key === "Enter" && results[0] && onSelect(results[0])
+          }
           placeholder="Search your city"
           className="h-11 w-full rounded-xl border border-line pr-4 pl-11 text-sm outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-100"
         />
       </div>
+      <p role="status" className="mt-2 text-xs text-muted">
+        {error ||
+          (loading
+            ? "Searching cities…"
+            : q.length < 2
+              ? "Type at least 2 letters"
+              : "")}
+      </p>
       <ul className="mt-2 max-h-56 overflow-y-auto">
         {results.map((c) => (
           <li key={c.id}>
@@ -248,7 +343,11 @@ export function CitySearch({ onSelect, exclude, autoFocus }: { onSelect: (c: Cit
             </button>
           </li>
         ))}
-        {results.length === 0 && <li className="px-3 py-2.5 text-sm text-muted">No cities match &ldquo;{q}&rdquo;.</li>}
+        {results.length === 0 && (
+          <li className="px-3 py-2.5 text-sm text-muted">
+            No cities match &ldquo;{q}&rdquo;.
+          </li>
+        )}
       </ul>
     </div>
   );

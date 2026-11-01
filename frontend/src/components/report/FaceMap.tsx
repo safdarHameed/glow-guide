@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- authenticated mask URLs must bypass the image optimizer. */
 
 import { AnimatePresence, motion } from "motion/react";
 
@@ -47,12 +48,45 @@ const overlays: Record<Overlay, { color: string; shapes: React.ReactNode }> = {
 };
 
 /** Illustrated face with the selected YouCam mask drawn on top (sample shapes until real masks arrive). */
-export function FaceMap({ overlay, show }: { overlay: Overlay; show: boolean }) {
+export function FaceMap({
+  overlay,
+  show,
+  masks = {},
+  demo = false,
+}: {
+  overlay: Overlay;
+  show: boolean;
+  masks?: Record<string, string>;
+  demo?: boolean;
+}) {
+  if (!demo)
+    return (
+      <div className="grid h-80 place-items-center overflow-hidden rounded-2xl bg-canvas">
+        {show && masks[overlay] ? (
+          <img
+            src={masks[overlay]}
+            alt={`${overlay} detection mask`}
+            className="h-full w-full object-contain"
+          />
+        ) : (
+          <p className="px-6 text-center text-sm text-muted">
+            {show
+              ? "No detection mask available for this measurement."
+              : "Overlay hidden. Your selfie is not stored."}
+          </p>
+        )}
+      </div>
+    );
   const o = overlays[overlay];
   return (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-b from-brand-50 via-canvas to-sun-50">
       <div className="animate-scan absolute inset-x-0 z-10 h-10 bg-gradient-to-b from-transparent via-brand-300/30 to-transparent" />
-      <svg viewBox="0 0 200 260" className="mx-auto h-[320px] w-full" role="img" aria-label={`Face map showing ${overlay}`}>
+      <svg
+        viewBox="0 0 200 260"
+        className="mx-auto h-[320px] w-full"
+        role="img"
+        aria-label={`Face map showing ${overlay}`}
+      >
         <defs>
           <filter id="fm-soft" x="-50%" y="-50%" width="200%" height="200%">
             <feGaussianBlur stdDeviation="5" />
@@ -63,16 +97,41 @@ export function FaceMap({ overlay, show }: { overlay: Overlay; show: boolean }) 
           </linearGradient>
         </defs>
         <path d="M78 215 L78 245 Q100 252 122 245 L122 215 Z" fill="#E9C9AF" />
-        <path d="M30 260 Q40 238 78 236 L122 236 Q160 238 170 260 Z" fill="#24695C" opacity="0.85" />
+        <path
+          d="M30 260 Q40 238 78 236 L122 236 Q160 238 170 260 Z"
+          fill="#24695C"
+          opacity="0.85"
+        />
         <ellipse cx="100" cy="135" rx="68" ry="92" fill="url(#fm-skin)" />
-        <path d="M32 120 Q30 40 100 36 Q170 40 168 120 Q160 78 128 66 Q100 82 64 70 Q40 84 32 120 Z" fill="#2B2420" />
-        <path d="M62 104 Q74 97 86 103" stroke="#3B2F28" strokeWidth="3" strokeLinecap="round" fill="none" />
-        <path d="M114 103 Q126 97 138 104" stroke="#3B2F28" strokeWidth="3" strokeLinecap="round" fill="none" />
+        <path
+          d="M32 120 Q30 40 100 36 Q170 40 168 120 Q160 78 128 66 Q100 82 64 70 Q40 84 32 120 Z"
+          fill="#2B2420"
+        />
+        <path
+          d="M62 104 Q74 97 86 103"
+          stroke="#3B2F28"
+          strokeWidth="3"
+          strokeLinecap="round"
+          fill="none"
+        />
+        <path
+          d="M114 103 Q126 97 138 104"
+          stroke="#3B2F28"
+          strokeWidth="3"
+          strokeLinecap="round"
+          fill="none"
+        />
         <ellipse cx="74" cy="118" rx="8" ry="4.5" fill="#fff" />
         <ellipse cx="126" cy="118" rx="8" ry="4.5" fill="#fff" />
         <circle cx="74" cy="118" r="3.2" fill="#3B2F28" />
         <circle cx="126" cy="118" r="3.2" fill="#3B2F28" />
-        <path d="M100 124 Q97 145 93 152 Q100 157 107 152" stroke="#C9A288" strokeWidth="2" strokeLinecap="round" fill="none" />
+        <path
+          d="M100 124 Q97 145 93 152 Q100 157 107 152"
+          stroke="#C9A288"
+          strokeWidth="2"
+          strokeLinecap="round"
+          fill="none"
+        />
         <path d="M84 181 Q100 192 116 181 Q100 186 84 181 Z" fill="#C97B76" />
         <AnimatePresence mode="wait">
           {show && (

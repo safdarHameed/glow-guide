@@ -6,20 +6,27 @@ import { ProductThumb } from "@/components/app/ProductThumb";
 import { useProductLink } from "@/components/app/useProductLink";
 import { useAppState } from "@/components/providers/AppStateProvider";
 import { Popover, Tag } from "@/components/ui/Kit";
-import { alternatives, formatPrice, lowestPrice, productById, type PlanStep, type Product } from "@/lib/mock-data";
+import {
+  formatPrice,
+  lowestPrice,
+  type PlanStep,
+  type Product,
+} from "@/lib/domain";
 
 export function cheapestOffer(p: Product) {
   return [...p.offers].sort((a, b) => a.price - b.price)[0]!;
 }
 
 /** Next ranked options for a step, each labelled by how it differs (S11 click 4). */
-export function swapOptions(step: PlanStep) {
-  const current = productById(step.productId);
+export function swapOptions(step: PlanStep, products: Product[]) {
+  const current = products.find((p) => p.id === step.productId);
   if (!current) return [];
-  return (alternatives[step.category] ?? [])
-    .filter((id) => id !== step.productId)
-    .map(productById)
-    .filter((p): p is Product => Boolean(p))
+  return products
+    .filter(
+      (p) =>
+        p.id !== current.id && p.category === current.category && p.suitable,
+    )
+    .sort((a, b) => b.match - a.match)
     .slice(0, 3)
     .map((p) => ({
       product: p,
@@ -37,18 +44,23 @@ export function PlanStepRow({
   index,
   highlighted,
   onSwap,
+  cityId,
 }: {
+  cityId: string;
   step: PlanStep;
   index: number;
   highlighted: boolean;
   onSwap: (step: PlanStep, product: Product) => void;
 }) {
   const productLink = useProductLink();
-  const { city } = useAppState();
+  const { city, productById, products } = useAppState();
   const product = productById(step.productId);
   if (!product) return null;
   const offer = cheapestOffer(product);
-  const options = swapOptions(step);
+  const options = swapOptions(
+    step,
+    products.filter((p) => !p.cityId || p.cityId === cityId),
+  );
   const seeAllCategory = product.category;
 
   return (
@@ -56,8 +68,15 @@ export function PlanStepRow({
       id={`step-${step.category.toLowerCase().replace(/\s+/g, "-")}`}
       className={`flex gap-3 rounded-2xl p-3 transition-colors ${highlighted ? "bg-sun-50 ring-2 ring-sun-300" : "hover:bg-canvas"}`}
     >
-      <span className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-50 text-xs font-semibold text-brand-600">{index + 1}</span>
-      <Link href={productLink(product.id)} scroll={false} className="shrink-0" aria-label={`Open ${product.name}`}>
+      <span className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-50 text-xs font-semibold text-brand-600">
+        {index + 1}
+      </span>
+      <Link
+        href={productLink(product.id)}
+        scroll={false}
+        className="shrink-0"
+        aria-label={`Open ${product.name}`}
+      >
         <ProductThumb category={product.category} size={52} />
       </Link>
       <div className="min-w-0 flex-1">
@@ -65,10 +84,17 @@ export function PlanStepRow({
           {step.category}
           {!step.owned && ` · ${offer.store}`}
         </p>
-        <Link href={productLink(product.id)} scroll={false} className="line-clamp-2 block text-sm font-semibold text-ink hover:text-brand-600">
+        <Link
+          href={productLink(product.id)}
+          scroll={false}
+          className="line-clamp-2 block text-sm font-semibold text-ink hover:text-brand-600"
+        >
           {product.brand} {product.name}
         </Link>
-        <p className="mt-0.5 line-clamp-2 cursor-help text-xs text-ink-soft" title={product.why.join(" · ")}>
+        <p
+          className="mt-0.5 line-clamp-2 cursor-help text-xs text-ink-soft"
+          title={product.why.join(" · ")}
+        >
           {step.reason}
         </p>
       </div>
@@ -76,24 +102,35 @@ export function PlanStepRow({
         {step.owned ? (
           <Tag tone="brand">You own this</Tag>
         ) : (
-          <span className={`text-sm font-semibold ${offer.verified ? "text-ink" : "text-muted"}`}>
+          <span
+            className={`text-sm font-semibold ${offer.verified ? "text-ink" : "text-muted"}`}
+          >
             {offer.verified ? "" : "≈ "}
-            {formatPrice(offer.price, city.currency)}
+            {formatPrice(offer.price, offer.currency ?? city.currency)}
           </span>
         )}
         {!step.owned && (
           <Popover
             className="w-72"
             trigger={({ toggle }) => (
-              <button onClick={toggle} className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50">
+              <button
+                onClick={toggle}
+                className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50"
+              >
                 <ArrowLeftRight size={12} /> Swap
               </button>
             )}
           >
             {(close) => (
               <div>
-                <p className="px-3 pt-1 pb-2 text-xs font-semibold text-muted">Next best for {step.category.toLowerCase()}</p>
-                {options.length === 0 && <p className="px-3 pb-2 text-sm text-muted">No other matches yet.</p>}
+                <p className="px-3 pt-1 pb-2 text-xs font-semibold text-muted">
+                  Next best for {step.category.toLowerCase()}
+                </p>
+                {options.length === 0 && (
+                  <p className="px-3 pb-2 text-sm text-muted">
+                    No other matches yet.
+                  </p>
+                )}
                 {options.map(({ product: alt, label }) => (
                   <button
                     key={alt.id}
@@ -109,10 +146,13 @@ export function PlanStepRow({
                         {alt.brand} {alt.name}
                       </span>
                       <span className="text-xs text-muted">
-                        {formatPrice(lowestPrice(alt), city.currency)} · {alt.match}% match
+                        {formatPrice(lowestPrice(alt), city.currency)} ·{" "}
+                        {alt.match}% match
                       </span>
                     </span>
-                    <Tag tone={label === "Cheaper" ? "brand" : "sky"}>{label}</Tag>
+                    <Tag tone={label === "Cheaper" ? "brand" : "sky"}>
+                      {label}
+                    </Tag>
                   </button>
                 ))}
                 <Link

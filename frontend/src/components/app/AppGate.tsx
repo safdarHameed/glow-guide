@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Logo, LogoMark } from "@/components/ui/Logo";
+import { useAppState } from "@/components/providers/AppStateProvider";
 import { AppShell } from "./AppShell";
 
 const DEMO_PATH = "/report/demo";
@@ -21,6 +22,7 @@ export function AppGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { status, reload } = useAuth();
   const isDemo = pathname === DEMO_PATH;
+  const state = useAppState();
 
   useEffect(() => {
     if (status === "unauthenticated" && !isDemo) {
@@ -40,8 +42,13 @@ export function AppGate({ children }: { children: React.ReactNode }) {
           <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-sun-50 text-sun-600">
             <WifiOff size={26} />
           </span>
-          <h1 className="mt-4 text-xl font-semibold text-ink">Live data is unavailable</h1>
-          <p className="mt-2 text-sm text-muted">We can&apos;t reach GlowGuide right now. We&apos;ll pick up where you left off once the connection is back.</p>
+          <h1 className="mt-4 text-xl font-semibold text-ink">
+            Live data is unavailable
+          </h1>
+          <p className="mt-2 text-sm text-muted">
+            We can&apos;t reach GlowGuide right now. We&apos;ll pick up where
+            you left off once the connection is back.
+          </p>
           <Button className="mt-6" onClick={() => void reload()}>
             Retry
           </Button>
@@ -52,14 +59,49 @@ export function AppGate({ children }: { children: React.ReactNode }) {
 
   if (status !== "authenticated") {
     return (
-      <div className="grid min-h-screen place-items-center bg-canvas" aria-busy="true" aria-label="Loading">
+      <div
+        className="grid min-h-screen place-items-center bg-canvas"
+        aria-busy="true"
+        aria-label="Loading"
+      >
         <LogoMark className="h-12 w-12 animate-pulse" />
       </div>
     );
   }
 
-  if (BARE_PATHS.some((p) => pathname.startsWith(p))) return <>{children}</>;
-  return <AppShell>{children}</AppShell>;
+  if (!isDemo && state.loading)
+    return (
+      <div className="min-h-screen bg-canvas p-8">
+        <div
+          className="h-96 animate-pulse rounded-3xl bg-white"
+          aria-label="Loading your data"
+        />
+      </div>
+    );
+
+  const content = (
+    <>
+      {!isDemo && state.error && (
+        <div
+          role="alert"
+          className="m-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-600"
+        >
+          <p>{state.error}</p>
+          <div className="mt-3 flex gap-2">
+            <Button size="sm" onClick={() => void state.reload()}>
+              Retry
+            </Button>
+            <Button size="sm" variant="ghost" onClick={state.clearError}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      )}
+      {children}
+    </>
+  );
+  if (BARE_PATHS.some((p) => pathname.startsWith(p))) return content;
+  return <AppShell>{content}</AppShell>;
 }
 
 function DemoFrame({ children }: { children: React.ReactNode }) {
@@ -68,7 +110,10 @@ function DemoFrame({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-line bg-white/90 px-4 backdrop-blur sm:px-8">
         <Logo />
         <div className="flex items-center gap-2">
-          <Link href="/auth?mode=login" className="hidden px-3 text-sm font-medium text-ink-soft hover:text-brand-600 sm:block">
+          <Link
+            href="/auth?mode=login"
+            className="hidden px-3 text-sm font-medium text-ink-soft hover:text-brand-600 sm:block"
+          >
             Log in
           </Link>
           <ButtonLink href="/auth?mode=signup&intent=scan" size="sm">
@@ -76,8 +121,12 @@ function DemoFrame({ children }: { children: React.ReactNode }) {
           </ButtonLink>
         </div>
       </header>
-      <div className="bg-sun-50 px-4 py-2 text-center text-xs font-medium text-sun-700">Demo mode · sample data, read-only</div>
-      <main className="mx-auto max-w-[1240px] px-4 py-8 sm:px-8">{children}</main>
+      <div className="bg-sun-50 px-4 py-2 text-center text-xs font-medium text-sun-700">
+        Demo mode · sample data, read-only
+      </div>
+      <main className="mx-auto max-w-[1240px] px-4 py-8 sm:px-8">
+        {children}
+      </main>
     </div>
   );
 }

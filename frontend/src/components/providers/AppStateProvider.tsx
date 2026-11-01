@@ -1,176 +1,340 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { cityById, cities, defaultPlan, defaultWishlist, type City, type Plan, type PlanStep } from "@/lib/mock-data";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useAuth } from "./AuthProvider";
+import { glowApi, message } from "@/lib/glow-api";
+import {
+  asCity,
+  emptyCity,
+  type City,
+  type Environment,
+  type Location,
+  type Plan,
+  type PlanRecord,
+  type Product,
+  type Profile,
+  type Scan,
+} from "@/lib/domain";
 
-/**
- * Client-side app state until the profile/plans/saved APIs exist.
- * Persisted per browser in localStorage; every read tolerates missing or blocked storage.
- */
-
-export type Profile = {
-  concerns: string[];
-  avoid: string[];
-  owned: string[];
-  budgetMode: "product" | "routine";
-  budgetMin: number;
-  budgetMax: number;
-  skinTypeOverride: string | null;
-  units: "C" | "F";
-  notifications: { uv: boolean; scan: boolean; price: boolean; trip: boolean };
-  keepScanHistory: boolean;
-  scanConsent: boolean;
-};
-
+export type { Profile } from "@/lib/domain";
 export const defaultProfile: Profile = {
-  concerns: ["Oiliness", "Large pores"],
-  avoid: ["Fragrance", "Alcohol denat."],
-  owned: ["CeraVe Foaming Cleanser"],
+  city: null,
+  recentCities: [],
+  concerns: [],
+  avoid: [],
+  owned: [],
   budgetMode: "routine",
-  budgetMin: 1000,
-  budgetMax: 15000,
+  budgetMin: 0,
+  budgetMax: null,
   skinTypeOverride: null,
   units: "C",
   notifications: { uv: true, scan: true, price: true, trip: true },
   keepScanHistory: true,
   scanConsent: false,
+  onboarding: null,
+  planOutdated: false,
 };
-
+const emptyPlan: Plan = { morning: [], evening: [] };
 type AppState = {
   city: City;
   recentCityIds: string[];
-  setCity: (id: string) => void;
+  cities: City[];
+  cityById: (id: string) => City;
+  setCity: (city: string | Location) => Promise<boolean>;
   plan: Plan;
-  setPlan: (plan: Plan) => void;
-  addToPlan: (productId: string, category: string, when: "morning" | "evening" | "both") => void;
-  /** Bumps when a city or settings change means the plan should be refreshed ("Update plan" banner). */
+  planRecord: PlanRecord | null;
+  setPlan: (plan: Plan) => Promise<boolean>;
+  adoptPlan: (plan: PlanRecord) => void;
+  addToPlan: (
+    productId: string,
+    category: string,
+    when: "morning" | "evening" | "both",
+  ) => Promise<boolean>;
   planOutdated: boolean;
-  setPlanOutdated: (v: boolean) => void;
+  setPlanOutdated: (value: boolean) => void;
   wishlist: string[];
-  toggleWishlist: (productId: string) => boolean;
+  toggleWishlist: (productId: string) => Promise<boolean | null>;
   compare: string[];
-  toggleCompare: (productId: string) => void;
+  toggleCompare: (id: string) => void;
   clearCompare: () => void;
   profile: Profile;
-  updateProfile: (patch: Partial<Profile>) => void;
+  updateProfile: (patch: Partial<Profile>) => Promise<boolean>;
+  loading: boolean;
+  error: string | null;
+  clearError: () => void;
+  reload: () => Promise<void>;
+  latestScan: Scan | null;
+  scanHistory: Scan[];
+  acceptScan: (scan: Scan) => void;
+  forgetScan: (id: string) => void;
+  environment: Environment | null;
+  environmentError: string | null;
+  products: Product[];
+  productById: (id: string) => Product | undefined;
+  mergeProducts: (items: Product[]) => void;
+  savedPlans: PlanRecord[];
+  refreshPlans: () => Promise<void>;
 };
-
 const AppStateContext = createContext<AppState | null>(null);
 
-function load<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? { ...fallback, ...JSON.parse(raw) } : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function loadArray(key: string, fallback: string[]): string[] {
-  try {
-    const raw = localStorage.getItem(key);
-    const parsed = raw ? JSON.parse(raw) : null;
-    return Array.isArray(parsed) ? parsed : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function save(key: string, value: unknown) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* storage unavailable: state stays in memory */
-  }
-}
-
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
-  const [cityId, setCityId] = useState("lahore");
-  const [recentCityIds, setRecent] = useState<string[]>(["lahore", "karachi", "islamabad"]);
-  const [plan, setPlanState] = useState<Plan>(defaultPlan);
-  const [planOutdated, setPlanOutdated] = useState(true);
-  const [wishlist, setWishlist] = useState<string[]>(defaultWishlist);
+  const { user, status } = useAuth();
+  const [profile, setProfile] = useState(defaultProfile);
+  const [planRecord, setPlanRecord] = useState<PlanRecord | null>(null);
+  const [planOutdated, setPlanOutdated] = useState(false);
+  const [wishlist, setWishlist] = useState<string[]>([]);
   const [compare, setCompare] = useState<string[]>([]);
-  const [profile, setProfile] = useState<Profile>(defaultProfile);
-  const [hydrated, setHydrated] = useState(false);
-
+  const [catalog, setCatalog] = useState<Product[]>([]);
+  const [latestScan, setLatestScan] = useState<Scan | null>(null);
+  const [scanHistory, setScanHistory] = useState<Scan[]>([]);
+  const [savedPlans, setSavedPlans] = useState<PlanRecord[]>([]);
+  const [environment, setEnvironment] = useState<Environment | null>(null);
+  const [environmentError, setEnvironmentError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const generation = useRef(0);
+  const writes = useRef(Promise.resolve());
+  const mergeProducts = useCallback(
+    (items: Product[]) =>
+      setCatalog((current) => {
+        const map = new Map(current.map((p) => [p.id, p]));
+        items.forEach((p) => map.set(p.id, p));
+        return [...map.values()];
+      }),
+    [],
+  );
+  const adoptPlan = useCallback(
+    (plan: PlanRecord) => {
+      setPlanRecord(plan);
+      mergeProducts(plan.products);
+      setPlanOutdated(false);
+    },
+    [mergeProducts],
+  );
+  const reload = useCallback(async () => {
+    const run = ++generation.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const [dashboard, history, products, plans] = await Promise.all([
+        glowApi.dashboard(),
+        glowApi.scans(),
+        glowApi.products(),
+        glowApi.plans(),
+      ]);
+      if (run !== generation.current) return;
+      setProfile(dashboard.profile);
+      setLatestScan(dashboard.scan);
+      setPlanRecord(dashboard.plan);
+      setPlanOutdated(dashboard.planOutdated);
+      setWishlist(dashboard.wishlist);
+      setEnvironment(dashboard.environment);
+      setEnvironmentError(dashboard.environmentError);
+      setScanHistory(history.scans);
+      setSavedPlans(plans.plans);
+      mergeProducts([
+        ...products.products,
+        ...(dashboard.plan?.products ?? []),
+        ...plans.plans.flatMap((p) => p.products),
+      ]);
+      const missing = dashboard.wishlist.filter(
+        (id) => !products.products.some((p) => p.id === id),
+      );
+      const saved = await Promise.all(missing.map((id) => glowApi.product(id)));
+      if (run === generation.current) mergeProducts(saved);
+    } catch (err) {
+      if (run === generation.current) setError(message(err));
+    } finally {
+      if (run === generation.current) setLoading(false);
+    }
+  }, [mergeProducts]);
   useEffect(() => {
-    const stored = load("gg_state", { cityId: "lahore", recent: ["lahore", "karachi", "islamabad"] });
-    if (cities.some((c) => c.id === stored.cityId)) setCityId(stored.cityId);
-    setRecent(stored.recent);
-    setPlanState(load("gg_plan", defaultPlan));
-    setWishlist(loadArray("gg_wishlist", defaultWishlist));
-    setProfile(load("gg_profile", defaultProfile));
-    setHydrated(true);
+    setCatalog([]);
+    setProfile(defaultProfile);
+    setPlanRecord(null);
+    setLatestScan(null);
+    setWishlist([]);
+    setCompare([]);
+    if (status === "authenticated") void reload();
+    else {
+      generation.current++;
+      setLoading(false);
+    }
+  }, [user?.id, status, reload]);
+  const updateProfile = useCallback(async (patch: Partial<Profile>) => {
+    try {
+      const next = await glowApi.profile(patch);
+      setProfile(next);
+      setPlanOutdated(next.planOutdated);
+      return true;
+    } catch (err) {
+      setError(message(err));
+      return false;
+    }
   }, []);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    save("gg_state", { cityId, recent: recentCityIds });
-    save("gg_plan", plan);
-    save("gg_wishlist", wishlist);
-    save("gg_profile", profile);
-  }, [hydrated, cityId, recentCityIds, plan, wishlist, profile]);
-
-  const setCity = useCallback((id: string) => {
-    setCityId(id);
-    setRecent((r) => [id, ...r.filter((x) => x !== id)].slice(0, 4));
-  }, []);
-
-  const addToPlan = useCallback((productId: string, category: string, when: "morning" | "evening" | "both") => {
-    setPlanState((p) => {
-      const put = (steps: PlanStep[], prefix: string): PlanStep[] => {
-        const step: PlanStep = { id: `${prefix}${Date.now()}`, category, productId, reason: "Added by you" };
-        const i = steps.findIndex((s) => s.category === category);
-        return i >= 0 ? steps.map((s, idx) => (idx === i ? { ...step, id: s.id } : s)) : [...steps, step];
+  const cities = useMemo(
+    () =>
+      profile.recentCities.map((c) =>
+        environment?.city.id === c.id ? environment.city : asCity(c),
+      ),
+    [profile.recentCities, environment],
+  );
+  const cityById = useCallback(
+    (id: string) => cities.find((c) => c.id === id) ?? emptyCity,
+    [cities],
+  );
+  const setCity = useCallback(
+    async (value: string | Location) => {
+      const location =
+        typeof value === "string" ? cities.find((c) => c.id === value) : value;
+      if (!location || !(await updateProfile({ city: location }))) return false;
+      setEnvironment(null);
+      await reload();
+      return true;
+    },
+    [cities, updateProfile, reload],
+  );
+  const setPlan = useCallback(
+    (plan: Plan) => {
+      if (!planRecord) {
+        setError("Build a plan from your report first.");
+        return Promise.resolve(false);
+      }
+      const original = planRecord;
+      const result = writes.current.then(async () => {
+        try {
+          adoptPlan(await glowApi.updatePlan(original.id, { routine: plan }));
+          return true;
+        } catch (err) {
+          setError(message(err));
+          return false;
+        }
+      });
+      writes.current = result.then(() => undefined);
+      return result;
+    },
+    [planRecord, adoptPlan],
+  );
+  const addToPlan = useCallback(
+    (
+      productId: string,
+      category: string,
+      when: "morning" | "evening" | "both",
+    ) => {
+      const routine = planRecord ?? emptyPlan;
+      const put = (steps: Plan["morning"], time: string) => {
+        const step = {
+          id: `${time}-${Date.now()}`,
+          productId,
+          category,
+          reason: "Added by you",
+          edited: true,
+        };
+        return steps.some((s) => s.category === category)
+          ? steps.map((s) =>
+              s.category === category ? { ...step, id: s.id } : s,
+            )
+          : [...steps, step];
       };
-      return {
-        morning: when === "evening" ? p.morning : put(p.morning, "m"),
-        evening: when === "morning" ? p.evening : put(p.evening, "e"),
-      };
-    });
-  }, []);
-
-  /** Returns true when the product was added, false when removed. */
+      return setPlan({
+        morning:
+          when === "evening" ? routine.morning : put(routine.morning, "m"),
+        evening:
+          when === "morning" ? routine.evening : put(routine.evening, "e"),
+      });
+    },
+    [planRecord, setPlan],
+  );
   const toggleWishlist = useCallback(
-    (productId: string) => {
-      const added = !wishlist.includes(productId);
-      setWishlist((w) => (added ? [...w, productId] : w.filter((x) => x !== productId)));
-      return added;
+    async (id: string) => {
+      const added = !wishlist.includes(id);
+      try {
+        await glowApi.wishlist(id, added);
+        setWishlist((w) =>
+          added ? [...new Set([...w, id])] : w.filter((i) => i !== id),
+        );
+        return added;
+      } catch (err) {
+        setError(message(err));
+        return null;
+      }
     },
     [wishlist],
   );
-
-  const toggleCompare = useCallback((productId: string) => {
-    setCompare((c) => (c.includes(productId) ? c.filter((x) => x !== productId) : c.length >= 3 ? c : [...c, productId]));
+  const refreshPlans = useCallback(async () => {
+    try {
+      setSavedPlans((await glowApi.plans()).plans);
+    } catch (err) {
+      setError(message(err));
+    }
   }, []);
-
-  const value = useMemo<AppState>(
-    () => ({
-      city: cityById(cityId),
-      recentCityIds,
-      setCity,
-      plan,
-      setPlan: setPlanState,
-      addToPlan,
-      planOutdated,
-      setPlanOutdated,
-      wishlist,
-      toggleWishlist,
-      compare,
-      toggleCompare,
-      clearCompare: () => setCompare([]),
-      profile,
-      updateProfile: (patch) => setProfile((p) => ({ ...p, ...patch })),
-    }),
-    [cityId, recentCityIds, setCity, plan, addToPlan, planOutdated, wishlist, toggleWishlist, compare, toggleCompare, profile],
+  const value: AppState = {
+    city:
+      environment?.city ?? (profile.city ? asCity(profile.city) : emptyCity),
+    recentCityIds: profile.recentCities.map((c) => c.id),
+    cities,
+    cityById,
+    setCity,
+    plan: planRecord ?? emptyPlan,
+    planRecord,
+    setPlan,
+    adoptPlan,
+    addToPlan,
+    planOutdated,
+    setPlanOutdated,
+    wishlist,
+    toggleWishlist,
+    compare,
+    toggleCompare: (id) =>
+      setCompare((c) =>
+        c.includes(id)
+          ? c.filter((i) => i !== id)
+          : c.length < 3
+            ? [...c, id]
+            : c,
+      ),
+    clearCompare: () => setCompare([]),
+    profile,
+    updateProfile,
+    loading,
+    error,
+    clearError: () => setError(null),
+    reload,
+    latestScan,
+    scanHistory,
+    acceptScan: (scan) => {
+      setLatestScan(scan);
+      if (profile.keepScanHistory)
+        setScanHistory((s) => [...s.filter((x) => x.id !== scan.id), scan]);
+    },
+    forgetScan: (id) => {
+      setLatestScan((scan) => (scan?.id === id ? null : scan));
+    },
+    environment,
+    environmentError,
+    products: catalog,
+    productById: (id) => catalog.find((p) => p.id === id),
+    mergeProducts,
+    savedPlans,
+    refreshPlans,
+  };
+  return (
+    <AppStateContext.Provider value={value}>
+      {children}
+    </AppStateContext.Provider>
   );
-
-  return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
 }
-
 export function useAppState() {
-  const ctx = useContext(AppStateContext);
-  if (!ctx) throw new Error("useAppState must be used inside <AppStateProvider>");
-  return ctx;
+  const value = useContext(AppStateContext);
+  if (!value)
+    throw new Error("useAppState must be used inside AppStateProvider");
+  return value;
 }

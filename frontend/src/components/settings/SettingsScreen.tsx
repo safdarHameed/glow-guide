@@ -1,25 +1,48 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Bell, ChevronRight, Download, Leaf, LogOut, MapPin, Shield, Trash2, User as UserIcon, Wallet } from "lucide-react";
+import {
+  Bell,
+  ChevronRight,
+  Download,
+  Leaf,
+  LogOut,
+  MapPin,
+  Shield,
+  Trash2,
+  User as UserIcon,
+  Wallet,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { Avatar } from "@/components/app/AppShell";
 import { CityPicker } from "@/components/app/CityPicker";
-import { AvoidPicker, BudgetPicker, ConcernPicker, OwnedPicker } from "@/components/onboarding/ProfilePickers";
-import { useAppState, type Profile } from "@/components/providers/AppStateProvider";
+import {
+  AvoidPicker,
+  BudgetPicker,
+  ConcernPicker,
+  OwnedPicker,
+} from "@/components/onboarding/ProfilePickers";
+import {
+  useAppState,
+  type Profile,
+} from "@/components/providers/AppStateProvider";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useToast } from "@/components/providers/ToastProvider";
 import { Button } from "@/components/ui/Button";
 import { Card, Chip, PageHeader, Tag, Toggle } from "@/components/ui/Kit";
 import { ConfirmDialog } from "@/components/ui/Overlay";
-import { ApiError } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { authApi } from "@/lib/auth";
-import { setHasScan } from "@/lib/flags";
-import { latestScan } from "@/lib/mock-data";
+import { glowApi, message } from "@/lib/glow-api";
 
-type Section = "profile" | "skin" | "location" | "budget" | "notifications" | "privacy";
+type Section =
+  "profile" | "skin" | "location" | "budget" | "notifications" | "privacy";
 
-const sections: { id: Section; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
+const sections: {
+  id: Section;
+  label: string;
+  icon: React.ComponentType<{ size?: number }>;
+}[] = [
   { id: "profile", label: "Profile", icon: UserIcon },
   { id: "skin", label: "Skin and goals", icon: Leaf },
   { id: "location", label: "Location and units", icon: MapPin },
@@ -38,7 +61,8 @@ const sectionKeys: Record<Section, (keyof Profile)[]> = {
   privacy: ["keepScanHistory"],
 };
 
-const isSection = (v: string | null): v is Section => sections.some((s) => s.id === v);
+const isSection = (v: string | null): v is Section =>
+  sections.some((s) => s.id === v);
 
 /** S14: edits what onboarding collected, plus notifications and data controls. */
 export function SettingsScreen() {
@@ -46,7 +70,7 @@ export function SettingsScreen() {
   const params = useSearchParams();
   const toast = useToast();
   const { logout } = useAuth();
-  const { profile, updateProfile, setPlanOutdated } = useAppState();
+  const { profile, updateProfile, latestScan } = useAppState();
   const sectionParam = params.get("section");
   const section: Section = isSection(sectionParam) ? sectionParam : "skin";
 
@@ -56,7 +80,9 @@ export function SettingsScreen() {
   // Pick up stored values once they load, and reset after saving.
   useEffect(() => setDraft(profile), [profile]);
 
-  const dirty = sectionKeys[section].some((k) => JSON.stringify(draft[k]) !== JSON.stringify(profile[k]));
+  const dirty = sectionKeys[section].some(
+    (k) => JSON.stringify(draft[k]) !== JSON.stringify(profile[k]),
+  );
 
   useEffect(() => {
     if (!dirty) return;
@@ -71,17 +97,21 @@ export function SettingsScreen() {
     else router.replace(`/settings?section=${to}`, { scroll: false });
   }
 
-  function save() {
-    updateProfile(draft);
-    setPlanOutdated(true);
-    toast("Saved");
+  async function save() {
+    const patch = Object.fromEntries(
+      sectionKeys[section].map((key) => [key, draft[key]]),
+    );
+    if (await updateProfile(patch)) toast("Saved");
   }
 
   const patch = (p: Partial<Profile>) => setDraft((d) => ({ ...d, ...p }));
 
   return (
     <>
-      <PageHeader title="Settings" context="Your profile, preferences and data" />
+      <PageHeader
+        title="Settings"
+        context="Your profile, preferences and data"
+      />
       <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
         <nav className="flex gap-1 overflow-x-auto rounded-3xl border border-line bg-white p-2 lg:flex-col lg:self-start">
           {sections.map((s) => (
@@ -90,7 +120,9 @@ export function SettingsScreen() {
               onClick={() => go(s.id)}
               aria-current={section === s.id ? "page" : undefined}
               className={`flex shrink-0 items-center gap-2.5 rounded-2xl px-3.5 py-2.5 text-left text-sm font-medium whitespace-nowrap transition-colors ${
-                section === s.id ? "bg-brand-50 text-brand-700" : "text-ink-soft hover:bg-canvas hover:text-ink"
+                section === s.id
+                  ? "bg-brand-50 text-brand-700"
+                  : "text-ink-soft hover:bg-canvas hover:text-ink"
               }`}
             >
               <s.icon size={17} />
@@ -110,45 +142,97 @@ export function SettingsScreen() {
           {section === "profile" && <ProfileSection />}
           {section === "skin" && (
             <Panel title="Skin and goals" onSave={save} dirty={dirty}>
-              <Group title="Skin type" hint="Defaults to your latest scan. A manual choice is used until your next scan.">
+              <Group
+                title="Skin type"
+                hint="Defaults to your latest scan. A manual choice is used until your next scan."
+              >
                 <div className="flex flex-wrap gap-2">
-                  <Chip selected={draft.skinTypeOverride === null} onClick={() => patch({ skinTypeOverride: null })}>
-                    From latest scan: {latestScan.skinType}
+                  <Chip
+                    selected={draft.skinTypeOverride === null}
+                    onClick={() => patch({ skinTypeOverride: null })}
+                  >
+                    From latest scan: {latestScan?.skinType ?? "No scan yet"}
                   </Chip>
                   {["Oily", "Dry", "Normal", "Sensitive"].map((t) => (
-                    <Chip key={t} selected={draft.skinTypeOverride === t} onClick={() => patch({ skinTypeOverride: t })}>
+                    <Chip
+                      key={t}
+                      selected={draft.skinTypeOverride === t}
+                      onClick={() => patch({ skinTypeOverride: t })}
+                    >
                       {t}
                     </Chip>
                   ))}
                 </div>
                 <p className="mt-2 text-xs text-muted">
-                  In use: <span className="font-medium text-ink">{draft.skinTypeOverride ?? `${latestScan.skinType} (from scan)`}</span>
+                  In use:{" "}
+                  <span className="font-medium text-ink">
+                    {draft.skinTypeOverride ??
+                      `${latestScan?.skinType ?? "No scan yet"} (from scan)`}
+                  </span>
                 </p>
               </Group>
               <Group title="Goals (up to 3)">
-                <ConcernPicker value={draft.concerns} onChange={(concerns) => patch({ concerns })} />
+                <ConcernPicker
+                  value={draft.concerns}
+                  onChange={(concerns) => patch({ concerns })}
+                />
               </Group>
               <Group title="Ingredients to avoid">
-                <AvoidPicker value={draft.avoid} onChange={(avoid) => patch({ avoid })} />
+                <AvoidPicker
+                  value={draft.avoid}
+                  onChange={(avoid) => patch({ avoid })}
+                />
               </Group>
               <Group title="Products I own">
-                <OwnedPicker value={draft.owned} onChange={(owned) => patch({ owned })} />
+                <OwnedPicker
+                  value={draft.owned}
+                  onChange={(owned) => patch({ owned })}
+                />
               </Group>
             </Panel>
           )}
-          {section === "location" && <LocationSection draft={draft} patch={patch} onSave={save} dirty={dirty} />}
-          {section === "budget" && <BudgetSection draft={draft} patch={patch} onSave={save} dirty={dirty} />}
+          {section === "location" && (
+            <LocationSection
+              draft={draft}
+              patch={patch}
+              onSave={save}
+              dirty={dirty}
+            />
+          )}
+          {section === "budget" && (
+            <BudgetSection
+              draft={draft}
+              patch={patch}
+              onSave={save}
+              dirty={dirty}
+            />
+          )}
           {section === "notifications" && (
             <Panel title="Notifications" onSave={save} dirty={dirty}>
               {(
                 [
-                  ["uv", "UV and air-quality alerts", "When conditions in your city change your routine."],
-                  ["scan", "Scan reminder", "Every 2–4 weeks, to track progress in similar light."],
-                  ["price", "Price drops", "When a wishlist or plan product gets cheaper."],
+                  [
+                    "uv",
+                    "UV and air-quality alerts",
+                    "When conditions in your city change your routine.",
+                  ],
+                  [
+                    "scan",
+                    "Scan reminder",
+                    "Every 2–4 weeks, to track progress in similar light.",
+                  ],
+                  [
+                    "price",
+                    "Price drops",
+                    "When a wishlist or plan product gets cheaper.",
+                  ],
                   ["trip", "Trip reminders", "Two days before a saved trip."],
                 ] as const
               ).map(([key, label, hint]) => (
-                <div key={key} className="flex items-center justify-between gap-4 border-b border-line py-4 last:border-0">
+                <div
+                  key={key}
+                  className="flex items-center justify-between gap-4 border-b border-line py-4 last:border-0"
+                >
                   <div>
                     <p className="text-sm font-medium text-ink">{label}</p>
                     <p className="text-xs text-muted">{hint}</p>
@@ -156,13 +240,24 @@ export function SettingsScreen() {
                   <Toggle
                     label={label}
                     checked={draft.notifications[key]}
-                    onChange={(v) => patch({ notifications: { ...draft.notifications, [key]: v } })}
+                    onChange={(v) =>
+                      patch({
+                        notifications: { ...draft.notifications, [key]: v },
+                      })
+                    }
                   />
                 </div>
               ))}
             </Panel>
           )}
-          {section === "privacy" && <PrivacySection draft={draft} patch={patch} onSave={save} dirty={dirty} />}
+          {section === "privacy" && (
+            <PrivacySection
+              draft={draft}
+              patch={patch}
+              onSave={save}
+              dirty={dirty}
+            />
+          )}
         </div>
       </div>
 
@@ -171,7 +266,8 @@ export function SettingsScreen() {
         onClose={() => setPending(null)}
         onConfirm={() => {
           setDraft(profile);
-          if (pending) router.replace(`/settings?section=${pending}`, { scroll: false });
+          if (pending)
+            router.replace(`/settings?section=${pending}`, { scroll: false });
         }}
         title="Discard changes?"
         body="You have unsaved changes in this section."
@@ -182,14 +278,26 @@ export function SettingsScreen() {
   );
 }
 
-function Panel({ title, children, onSave, dirty }: { title: string; children: React.ReactNode; onSave?: () => void; dirty?: boolean }) {
+function Panel({
+  title,
+  children,
+  onSave,
+  dirty,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onSave?: () => void;
+  dirty?: boolean;
+}) {
   return (
     <Card>
       <h2 className="text-lg font-semibold text-ink">{title}</h2>
       <div className="mt-5 space-y-7">{children}</div>
       {onSave && (
         <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5">
-          <p className="text-xs text-muted">Changes apply next time your plan updates.</p>
+          <p className="text-xs text-muted">
+            Changes apply next time your plan updates.
+          </p>
           <Button onClick={onSave} disabled={!dirty}>
             Save changes
           </Button>
@@ -199,7 +307,15 @@ function Panel({ title, children, onSave, dirty }: { title: string; children: Re
   );
 }
 
-function Group({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+function Group({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <section>
       <h3 className="text-sm font-semibold text-ink">{title}</h3>
@@ -209,11 +325,18 @@ function Group({ title, hint, children }: { title: string; hint?: string; childr
   );
 }
 
-type SectionProps = { draft: Profile; patch: (p: Partial<Profile>) => void; onSave: () => void; dirty: boolean };
+type SectionProps = {
+  draft: Profile;
+  patch: (p: Partial<Profile>) => void;
+  onSave: () => void;
+  dirty: boolean;
+};
 
 function ProfileSection() {
   const toast = useToast();
-  const { user } = useAuth();
+  const { user, reload: reloadAuth } = useAuth();
+  const [accountName, setAccountName] = useState(user?.name ?? "");
+  const [typedAccount, setTypedAccount] = useState("");
   const [sending, setSending] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   if (!user) return null;
@@ -222,9 +345,15 @@ function ProfileSection() {
     setSending(true);
     try {
       await authApi.forgotPassword(user!.email);
-      toast(`We've emailed you a link to ${user!.hasPassword ? "set a new" : "set a"} password`);
+      toast(
+        `We've emailed you a link to ${user!.hasPassword ? "set a new" : "set a"} password`,
+      );
     } catch (err) {
-      toast(err instanceof ApiError ? err.message : "Couldn't send the link. Please try again.");
+      toast(
+        err instanceof ApiError
+          ? err.message
+          : "Couldn't send the link. Please try again.",
+      );
     } finally {
       setSending(false);
     }
@@ -239,27 +368,93 @@ function ProfileSection() {
           <p className="text-sm text-muted">{user.email}</p>
         </div>
       </div>
-      <Group title="Password" hint={user.hasPassword ? "We'll email you a secure link to choose a new password." : "You sign in with Google. Add a password to also sign in with email."}>
+      <Group title="Name">
+        <input
+          aria-label="Your name"
+          value={accountName}
+          onChange={(e) => setAccountName(e.target.value)}
+          maxLength={80}
+          className="h-11 rounded-xl border border-line px-4 text-sm"
+        />
+        <Button
+          className="ml-2"
+          size="sm"
+          disabled={!accountName.trim() || accountName === user.name}
+          onClick={async () => {
+            try {
+              await api("/account", {
+                method: "PATCH",
+                body: { name: accountName },
+              });
+              await reloadAuth();
+              toast("Name updated");
+            } catch (err) {
+              toast(message(err));
+            }
+          }}
+        >
+          Save name
+        </Button>
+      </Group>
+      <Group
+        title="Password"
+        hint={
+          user.hasPassword
+            ? "We'll email you a secure link to choose a new password."
+            : "You sign in with Google. Add a password to also sign in with email."
+        }
+      >
         <Button variant="secondary" onClick={sendResetLink} loading={sending}>
           {user.hasPassword ? "Change password" : "Set a password"}
         </Button>
       </Group>
       <Group title="Google">
-        {user.googleLinked ? <Tag tone="brand">Linked to Google</Tag> : <Tag>Not linked</Tag>}
+        {user.googleLinked ? (
+          <Tag tone="brand">Linked to Google</Tag>
+        ) : (
+          <Tag>Not linked</Tag>
+        )}
       </Group>
-      <Group title="Delete account" hint="Removes your account, scans and plans.">
-        <Button variant="secondary" className="text-rose-600 hover:border-rose-300 hover:text-rose-600" onClick={() => setDeleteOpen(true)}>
+      <Group
+        title="Delete account"
+        hint="Removes your account, scans and plans."
+      >
+        <Button
+          variant="secondary"
+          className="text-rose-600 hover:border-rose-300 hover:text-rose-600"
+          onClick={() => setDeleteOpen(true)}
+        >
           <Trash2 size={16} /> Delete account
         </Button>
       </Group>
       <ConfirmDialog
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
-        onConfirm={() => toast("Account deletion isn't available yet")}
+        onConfirm={async () => {
+          try {
+            await api("/account", {
+              method: "DELETE",
+              body: { confirmation: typedAccount },
+            });
+            window.location.replace("/");
+          } catch (err) {
+            toast(message(err));
+          }
+        }}
         title="Delete account"
-        body="Self-service account deletion is coming soon and isn't available yet. Nothing will be deleted now."
-        confirmLabel="Got it"
-      />
+        body="Permanently removes your account, scans, plans and saved products. Type DELETE to confirm."
+        confirmLabel="Delete account"
+        confirmDisabled={typedAccount !== "DELETE"}
+        destructive
+      >
+        <input
+          aria-label="Type DELETE to delete account"
+          value={typedAccount}
+          onChange={(e) => setTypedAccount(e.target.value)}
+          className="mt-4 h-11 w-full rounded-xl border border-line px-4"
+          placeholder="DELETE"
+        />
+      </ConfirmDialog>
     </Panel>
   );
 }
@@ -269,22 +464,36 @@ function LocationSection({ draft, patch, onSave, dirty }: SectionProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   return (
     <Panel title="Location and units" onSave={onSave} dirty={dirty}>
-      <Group title="Home city" hint="Changing it refreshes weather, products and your plan. Your skin scan is kept.">
+      <Group
+        title="Home city"
+        hint="Changing it refreshes weather, products and your plan. Your skin scan is kept."
+      >
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-canvas px-4 py-3">
           <p className="flex items-center gap-2 text-sm font-medium text-ink">
-            <MapPin size={16} className="text-brand-500" /> {city.name}, {city.country} · {city.currency}
+            <MapPin size={16} className="text-brand-500" /> {city.name},{" "}
+            {city.country} · {city.currency}
           </p>
-          <Button variant="secondary" size="sm" onClick={() => setPickerOpen(true)}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setPickerOpen(true)}
+          >
             Change city
           </Button>
         </div>
       </Group>
       <Group title="Temperature">
         <div className="flex gap-2">
-          <Chip selected={draft.units === "C"} onClick={() => patch({ units: "C" })}>
+          <Chip
+            selected={draft.units === "C"}
+            onClick={() => patch({ units: "C" })}
+          >
             °C
           </Chip>
-          <Chip selected={draft.units === "F"} onClick={() => patch({ units: "F" })}>
+          <Chip
+            selected={draft.units === "F"}
+            onClick={() => patch({ units: "F" })}
+          >
             °F
           </Chip>
         </div>
@@ -298,14 +507,27 @@ function BudgetSection({ draft, patch, onSave, dirty }: SectionProps) {
   const { city } = useAppState();
   return (
     <Panel title="Budget" onSave={onSave} dirty={dirty}>
-      <Group title="How should we budget?" hint={`Shown in ${city.currency}, set from your home city.`}>
+      <Group
+        title="How should we budget?"
+        hint={`Shown in ${city.currency}, set from your home city.`}
+      >
         <BudgetPicker
           mode={draft.budgetMode}
           min={draft.budgetMin}
-          max={draft.budgetMax}
+          max={draft.budgetMax ?? 15000}
           currency={city.currency}
-          onChange={(v) => patch({ budgetMode: v.mode, budgetMin: v.min, budgetMax: v.max })}
+          onChange={(v) =>
+            patch({ budgetMode: v.mode, budgetMin: v.min, budgetMax: v.max })
+          }
         />
+        <a
+          href="https://www.exchangerate-api.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 block text-xs text-muted"
+        >
+          Budget conversion rates by ExchangeRate-API
+        </a>
       </Group>
     </Panel>
   );
@@ -313,15 +535,25 @@ function BudgetSection({ draft, patch, onSave, dirty }: SectionProps) {
 
 function PrivacySection({ draft, patch, onSave, dirty }: SectionProps) {
   const toast = useToast();
-  const { user } = useAuth();
-  const { profile, plan, wishlist } = useAppState();
+  const { reload } = useAppState();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [typed, setTyped] = useState("");
 
-  function download() {
-    const data = { exportedAt: new Date().toISOString(), user, profile, plan, wishlist, latestScan };
-    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
-    const a = Object.assign(document.createElement("a"), { href: url, download: "glowguide-data.json" });
+  async function download() {
+    let data;
+    try {
+      data = await glowApi.export();
+    } catch (err) {
+      toast(message(err));
+      return;
+    }
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),
+    );
+    const a = Object.assign(document.createElement("a"), {
+      href: url,
+      download: "glowguide-data.json",
+    });
     a.click();
     URL.revokeObjectURL(url);
     toast("Your data was downloaded");
@@ -335,10 +567,14 @@ function PrivacySection({ draft, patch, onSave, dirty }: SectionProps) {
           <p className="text-xs text-muted">
             {draft.keepScanHistory
               ? "Scores and masks are kept so you can track progress. Selfies are never stored."
-              : "Off: scans are deleted after the report is shown, and the progress chart is disabled."}
+              : "Off: new reports are available for 15 minutes to build a plan, then deleted. They are excluded from history."}
           </p>
         </div>
-        <Toggle label="Keep scan history" checked={draft.keepScanHistory} onChange={(v) => patch({ keepScanHistory: v })} />
+        <Toggle
+          label="Keep scan history"
+          checked={draft.keepScanHistory}
+          onChange={(v) => patch({ keepScanHistory: v })}
+        />
       </div>
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={download}>
@@ -358,9 +594,14 @@ function PrivacySection({ draft, patch, onSave, dirty }: SectionProps) {
       <ConfirmDialog
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
-        onConfirm={() => {
-          setHasScan(false);
-          toast("All scans deleted");
+        onConfirm={async () => {
+          try {
+            await glowApi.deleteScans();
+            await reload();
+            toast("All scans deleted");
+          } catch (err) {
+            toast(message(err));
+          }
         }}
         title="Delete all scans?"
         body="This removes all scores and masks. Your plans stay, but will show “scan deleted”. Type DELETE to confirm."
