@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     google_client_id: str | None = None
     google_client_secret: str | None = None
 
+    youcam_api_key: str | None = None
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-3.8-flash"
+    scan_timeout_seconds: int = 60
+
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_user: str | None = None

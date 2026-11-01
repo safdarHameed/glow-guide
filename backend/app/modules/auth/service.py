@@ -40,6 +40,9 @@ def _session_ended() -> AppError:
 
 
 async def _start_session(db: AsyncSession, user: User, meta: SessionMeta, *, is_new_user: bool = False) -> AuthResult:
+    from app.modules.profiles.service import get_profile
+
+    await get_profile(db, user)
     tokens = await create_session(db, user.id, meta)
     await db.commit()
     return AuthResult(user, tokens, is_new_user)

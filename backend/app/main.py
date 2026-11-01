@@ -1,10 +1,12 @@
+import asyncio
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
+from sqlalchemy import delete, text
 
 from app.api.deps import DbSession
 from app.api.router import api_router
@@ -13,9 +15,21 @@ from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.middleware import SecurityHeadersMiddleware
 from app.core.rate_limit import limiter
-from app.db.session import engine
+from app.db.session import SessionLocal, engine
+from app.modules.scans.models import Scan
 
 logger = logging.getLogger("app")
+
+
+async def cleanup_private_reports():
+    while True:
+        try:
+            async with SessionLocal() as db:
+                await db.execute(delete(Scan).where(Scan.expires_at < datetime.now(UTC)))
+                await db.commit()
+        except Exception:
+            logger.warning("Private report cleanup failed; it will be retried")
+        await asyncio.sleep(60)
 
 
 @asynccontextmanager
@@ -25,7 +39,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         logger.warning("Google sign-in disabled: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to enable it")
     if not settings.smtp_enabled:
         logger.warning("SMTP not configured: emails will be printed to this log instead of sent")
-    yield
+    cleanup = asyncio.create_task(cleanup_private_reports())
+    try:
+        yield
+    finally:
+        cleanup.cancel()
+        with suppress(asyncio.CancelledError):
+            await cleanup
     await engine.dispose()
 
 
