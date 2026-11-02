@@ -1,7 +1,7 @@
 # GlowGuide API
 
 FastAPI + SQLAlchemy 2 (async, asyncpg) + PostgreSQL + Alembic. Authentication and the application modules
-are implemented. The full endpoint and flow map is in [backend integration notes](../docs/backend-integration.md).
+are implemented. Setup steps are in the root README; interactive API docs are at `/docs` when running locally.
 
 ## Layout
 
@@ -16,6 +16,7 @@ backend/
 │   ├── db/                  Declarative base + naming convention, async engine/session, model registry
 │   ├── services/            Shared integrations (mailer, email templates; YouCam / Open-Meteo / AI later)
 │   └── modules/             One package per feature: models · schemas · service · router
+│       ├── ai/              free AI tier limits + user-connected models (encrypted keys)
 │       ├── auth/            Sign up, log in, Google, sessions, password reset        (S02)
 │       ├── users/           User model, public schema, repository
 │       ├── profiles/        onboarding + settings data                              (S03, S14)

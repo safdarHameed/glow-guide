@@ -10,6 +10,7 @@ from app.api.deps import CurrentUser, DbSession
 from app.core.exceptions import AppError
 from app.core.rate_limit import limiter
 from app.core.schemas import ApiModel
+from app.modules.ai.service import forget_user as forget_ai_usage
 from app.modules.auth.cookies import clear_auth_cookies
 from app.modules.environment import service as weather
 from app.modules.plans import service as plans
@@ -100,6 +101,7 @@ async def account_update(payload: AccountPatch, db: DbSession, user: CurrentUser
 async def account_delete(payload: ConfirmDelete, db: DbSession, user: CurrentUser):
     if payload.confirmation != "DELETE":
         raise AppError(422, "CONFIRMATION_REQUIRED", "Type DELETE to confirm.")
+    await forget_ai_usage(db, user.id)
     await db.delete(user)
     await db.commit()
     response = Response(status_code=204)

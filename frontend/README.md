@@ -21,7 +21,8 @@ src/
 ```
 
 `/api/*` is proxied to the FastAPI backend (`BACKEND_URL`, default `http://127.0.0.1:8800`), so auth cookies are
-first-party. App screens after login use sample data from `lib/mock-data.ts` until the matching APIs exist.
+first-party. Signed-in screens use the API; only the landing illustrations and the public `/report/demo` sample use
+`lib/mock-data.ts`.
 
 ```bash
 npm install

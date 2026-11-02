@@ -1,11 +1,21 @@
 from typing import Literal
 
-from pydantic import Field, HttpUrl
+from pydantic import Field, HttpUrl, field_validator
 
 from app.core.schemas import ApiModel
 from app.modules.profiles.schemas import Location
 
 CATEGORIES = ("Cleansers", "Serums", "Moisturizers", "Sunscreens", "Exfoliants", "Aftercare")
+# Models often answer "Cleanser" or "SPF" instead of the exact category; map common variants by prefix.
+_CATEGORY_PREFIXES = {
+    "cleans": "Cleansers",
+    "serum": "Serums",
+    "moistur": "Moisturizers",
+    "sunscreen": "Sunscreens",
+    "spf": "Sunscreens",
+    "exfoli": "Exfoliants",
+    "after": "Aftercare",
+}
 
 
 class Ingredient(ApiModel):
@@ -43,6 +53,14 @@ class ProductData(ApiModel):
     rating: float = Field(default=0, ge=0, le=5)
     reviews: str = "Not available"
     sources: list[HttpUrl] = Field(default_factory=list, max_length=20)
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def _canonical_category(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        key = value.strip().lower()
+        return next((c for prefix, c in _CATEGORY_PREFIXES.items() if key.startswith(prefix)), value)
 
 
 class SearchInput(ApiModel):

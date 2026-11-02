@@ -1,5 +1,6 @@
-"""Password hashing, opaque tokens and access JWTs."""
+"""Password hashing, opaque tokens, access JWTs and encryption of stored third-party secrets."""
 
+import base64
 import hashlib
 import secrets
 import uuid
@@ -7,6 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import jwt
+from cryptography.fernet import Fernet, InvalidToken
 from pwdlib import PasswordHash
 
 from app.core.config import get_settings
@@ -72,4 +74,23 @@ def decode_access_token(token: str) -> AccessTokenPayload | None:
         )
         return AccessTokenPayload(user_id=uuid.UUID(claims["sub"]), session_id=uuid.UUID(claims["sid"]))
     except (jwt.PyJWTError, ValueError):
+        return None
+
+
+def _fernet() -> Fernet:
+    settings = get_settings()
+    secret = settings.ai_keys_secret or settings.jwt_secret
+    return Fernet(base64.urlsafe_b64encode(hashlib.sha256(f"glowguide-secrets:{secret}".encode()).digest()))
+
+
+def encrypt_secret(value: str) -> str:
+    """For provider API keys users connect; they are stored encrypted and never returned to clients."""
+    return _fernet().encrypt(value.encode()).decode()
+
+
+def decrypt_secret(value: str) -> str | None:
+    """None when the encryption secret changed since the value was stored."""
+    try:
+        return _fernet().decrypt(value.encode()).decode()
+    except InvalidToken:
         return None

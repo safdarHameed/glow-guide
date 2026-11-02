@@ -38,32 +38,37 @@ function loadGis(): Promise<void> {
   });
 }
 
-/**
- * Google popup (authorization-code flow). The one-time code goes to our API, which exchanges and verifies it.
- * When Google isn't configured on the server, clicking explains that instead of failing silently.
- */
-export function GoogleButton({
-  disabled,
-  onCode,
-  onUnavailable,
-}: {
-  disabled?: boolean;
-  onCode: (code: string) => Promise<void>;
-  onUnavailable: (message: string) => void;
-}) {
-  const client = useRef<CodeClient | null>(null);
+/** Google client id when the server has Google sign-in configured; `undefined` while loading, `null` when off. */
+export function useGoogleClientId(): string | null | undefined {
   const [clientId, setClientId] = useState<string | null | undefined>(undefined);
-  const [busy, setBusy] = useState(false);
-
   useEffect(() => {
     authApi
       .providers()
       .then((p) => setClientId(p.google.enabled ? p.google.clientId : null))
       .catch(() => setClientId(null));
   }, []);
+  return clientId;
+}
+
+/**
+ * Google popup (authorization-code flow). The one-time code goes to our API, which exchanges and verifies it.
+ * Only rendered when the server has Google configured; if Google's script fails to load, clicking explains that.
+ */
+export function GoogleButton({
+  clientId,
+  disabled,
+  onCode,
+  onUnavailable,
+}: {
+  clientId: string;
+  disabled?: boolean;
+  onCode: (code: string) => Promise<void>;
+  onUnavailable: (message: string) => void;
+}) {
+  const client = useRef<CodeClient | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!clientId) return;
     loadGis()
       .then(() => {
         client.current = window.google!.accounts.oauth2.initCodeClient({
@@ -84,12 +89,14 @@ export function GoogleButton({
           error_callback: () => setBusy(false),
         });
       })
-      .catch(() => setClientId(null));
+      .catch(() => {
+        client.current = null;
+      });
   }, [clientId, onCode]);
 
   function start() {
     if (!client.current) {
-      onUnavailable("Google sign-in isn't set up yet. Please use email for now.");
+      onUnavailable("Google sign-in couldn't load. Please use email for now.");
       return;
     }
     setBusy(true);
@@ -100,7 +107,7 @@ export function GoogleButton({
     <button
       type="button"
       onClick={start}
-      disabled={disabled || busy || clientId === undefined}
+      disabled={disabled || busy}
       className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-line bg-white text-sm font-medium text-ink transition-colors hover:border-ink/20 hover:bg-canvas disabled:opacity-60"
     >
       {busy ? (

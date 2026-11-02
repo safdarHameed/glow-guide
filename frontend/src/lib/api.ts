@@ -1,3 +1,5 @@
+import { AI_ATTENTION_CODES, emitAiAttention, emitAiChanged, usesAi } from "./ai-events";
+
 /** Error shape returned by the GlowGuide API: {"error": {"code", "message", "fields"?}}. */
 export class ApiError extends Error {
   constructor(
@@ -55,11 +57,16 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     return api<T>(path, { ...options, refreshOnUnauthorized: false });
   }
 
+  if (usesAi(method, path)) emitAiChanged();
   if (response.status === 204) return undefined as T;
 
   const data = await response.json().catch(() => null);
   if (!response.ok) {
     const error = data?.error;
+    // The AI settings form shows its own errors; the dialog is for AI failures elsewhere in the app.
+    if (error?.code && AI_ATTENTION_CODES.has(error.code) && !path.startsWith("/ai/")) {
+      emitAiAttention({ code: error.code, message: error.message });
+    }
     throw new ApiError(
       response.status,
       error?.code ?? "HTTP_ERROR",

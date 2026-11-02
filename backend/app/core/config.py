@@ -28,8 +28,13 @@ class Settings(BaseSettings):
 
     youcam_api_key: str | None = None
     gemini_api_key: str | None = None
-    gemini_model: str = "gemini-3.8-flash"
+    gemini_model: str = "gemini-2.5-flash"
     scan_timeout_seconds: int = 60
+
+    # GEMINI_API_KEY above powers the shared free tier; users can connect their own provider instead.
+    free_ai_daily_limit: int = 30
+    # Encrypts users' provider keys at rest. Falls back to a key derived from JWT_SECRET when unset.
+    ai_keys_secret: str | None = None
 
     smtp_host: str | None = None
     smtp_port: int = 587
@@ -38,7 +43,13 @@ class Settings(BaseSettings):
     mail_from: str = "GlowGuide <no-reply@glowguide.app>"
 
     @field_validator(
-        "google_client_id", "google_client_secret", "smtp_host", "smtp_user", "smtp_password", mode="before"
+        "google_client_id",
+        "google_client_secret",
+        "ai_keys_secret",
+        "smtp_host",
+        "smtp_user",
+        "smtp_password",
+        mode="before",
     )
     @classmethod
     def _empty_as_none(cls, value: str | None) -> str | None:

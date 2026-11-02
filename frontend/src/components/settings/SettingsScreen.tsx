@@ -9,11 +9,13 @@ import {
   LogOut,
   MapPin,
   Shield,
+  Sparkles,
   Trash2,
   User as UserIcon,
   Wallet,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { AiModelSection } from "@/components/ai/AiModelSection";
 import { Avatar } from "@/components/app/AppShell";
 import { CityPicker } from "@/components/app/CityPicker";
 import {
@@ -36,7 +38,13 @@ import { authApi } from "@/lib/auth";
 import { glowApi, message } from "@/lib/glow-api";
 
 type Section =
-  "profile" | "skin" | "location" | "budget" | "notifications" | "privacy";
+  | "profile"
+  | "skin"
+  | "location"
+  | "budget"
+  | "ai"
+  | "notifications"
+  | "privacy";
 
 const sections: {
   id: Section;
@@ -47,6 +55,7 @@ const sections: {
   { id: "skin", label: "Skin and goals", icon: Leaf },
   { id: "location", label: "Location and units", icon: MapPin },
   { id: "budget", label: "Budget", icon: Wallet },
+  { id: "ai", label: "AI model", icon: Sparkles },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "privacy", label: "Privacy and data", icon: Shield },
 ];
@@ -57,6 +66,7 @@ const sectionKeys: Record<Section, (keyof Profile)[]> = {
   skin: ["skinTypeOverride", "concerns", "avoid", "owned"],
   location: ["units"],
   budget: ["budgetMode", "budgetMin", "budgetMax"],
+  ai: [],
   notifications: ["notifications"],
   privacy: ["keepScanHistory"],
 };
@@ -140,6 +150,7 @@ export function SettingsScreen() {
 
         <div>
           {section === "profile" && <ProfileSection />}
+          {section === "ai" && <AiModelSection />}
           {section === "skin" && (
             <Panel title="Skin and goals" onSave={save} dirty={dirty}>
               <Group
@@ -408,13 +419,11 @@ function ProfileSection() {
           {user.hasPassword ? "Change password" : "Set a password"}
         </Button>
       </Group>
-      <Group title="Google">
-        {user.googleLinked ? (
+      {user.googleLinked && (
+        <Group title="Google">
           <Tag tone="brand">Linked to Google</Tag>
-        ) : (
-          <Tag>Not linked</Tag>
-        )}
-      </Group>
+        </Group>
+      )}
       <Group
         title="Delete account"
         hint="Removes your account, scans and plans."

@@ -13,13 +13,13 @@ import { authApi, safeNext } from "@/lib/auth";
 import { routes } from "@/lib/routes";
 import { AuthBrandPanel } from "./AuthBrandPanel";
 import { ForgotPasswordModal } from "./ForgotPasswordModal";
-import { GoogleButton } from "./GoogleButton";
+import { GoogleButton, useGoogleClientId } from "./GoogleButton";
 import { validateEmail, validateLoginPassword, validateName, validateNewPassword } from "./validation";
 
 type Mode = "signup" | "login";
 type FieldName = "name" | "email" | "password";
 
-/** S02: one screen for both actions. Google first for speed, email as fallback. */
+/** S02: one screen for both actions. Google first for speed when it is configured, email otherwise. */
 export function AuthScreen() {
   const router = useRouter();
   const params = useSearchParams();
@@ -27,6 +27,7 @@ export function AuthScreen() {
   const intent = params.get("intent");
   const next = safeNext(params.get("next"));
   const resetDone = params.get("reset") === "1";
+  const googleClientId = useGoogleClientId();
 
   const [values, setValues] = useState({ name: "", email: "", password: "" });
   const [touched, setTouched] = useState<Record<FieldName, boolean>>({ name: false, email: false, password: false });
@@ -160,13 +161,18 @@ export function AuthScreen() {
             <p className="mt-5 rounded-2xl bg-brand-50 px-4 py-3 text-sm text-brand-700">Your password has been updated. Log in with your new password.</p>
           )}
 
-          <div className="mt-6">
-            <GoogleButton disabled={submitting} onCode={onGoogleCode} onUnavailable={setFormError} />
-          </div>
-
-          <div className="my-6 flex items-center gap-3 text-xs text-muted">
-            <span className="h-px flex-1 bg-line" /> or with email <span className="h-px flex-1 bg-line" />
-          </div>
+          {googleClientId ? (
+            <>
+              <div className="mt-6">
+                <GoogleButton clientId={googleClientId} disabled={submitting} onCode={onGoogleCode} onUnavailable={setFormError} />
+              </div>
+              <div className="my-6 flex items-center gap-3 text-xs text-muted">
+                <span className="h-px flex-1 bg-line" /> or with email <span className="h-px flex-1 bg-line" />
+              </div>
+            </>
+          ) : (
+            <div className="mt-6" />
+          )}
 
           <form onSubmit={submit} noValidate className="space-y-4">
             <AnimatePresence initial={false}>

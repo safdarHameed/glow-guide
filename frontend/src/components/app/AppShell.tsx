@@ -19,6 +19,9 @@ import {
   User as UserIcon,
 } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
+import { AiAttentionDialog } from "@/components/ai/AiAttentionDialog";
+import { AiModelBadge } from "@/components/ai/AiModelBadge";
+import { AiStatusProvider } from "@/components/ai/AiStatusProvider";
 import { useAppState } from "@/components/providers/AppStateProvider";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Logo, LogoMark } from "@/components/ui/Logo";
@@ -72,100 +75,103 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [moreOpen, setMoreOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-canvas">
-      {/* Sidebar: full on desktop, icons on tablet, hidden on phones */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-20 flex-col border-r border-line bg-white md:flex lg:w-64">
-        <div className="flex h-16 items-center px-5">
-          <span className="hidden lg:block">
-            <Logo />
-          </span>
-          <Link
-            href="/dashboard"
-            className="lg:hidden"
-            aria-label="GlowGuide home"
-          >
-            <LogoMark className="h-9 w-9" />
-          </Link>
-        </div>
-        <nav className="flex-1 space-y-1 px-3 py-4">
-          {nav.map((item) => (
+    <AiStatusProvider>
+      <div className="min-h-screen bg-canvas">
+        {/* Sidebar: full on desktop, icons on tablet, hidden on phones */}
+        <aside className="fixed inset-y-0 left-0 z-30 hidden w-20 flex-col border-r border-line bg-white md:flex lg:w-64">
+          <div className="flex h-16 items-center px-5">
+            <span className="hidden lg:block">
+              <Logo />
+            </span>
+            <Link
+              href="/dashboard"
+              className="lg:hidden"
+              aria-label="GlowGuide home"
+            >
+              <LogoMark className="h-9 w-9" />
+            </Link>
+          </div>
+          <nav className="flex-1 space-y-1 px-3 py-4">
+            {nav.map((item) => (
+              <SideLink
+                key={item.href}
+                item={item}
+                active={isActive(pathname, item)}
+              />
+            ))}
+          </nav>
+          <div className="space-y-1 border-t border-line px-3 py-4">
             <SideLink
+              item={{ href: "/settings", label: "Settings", icon: Settings }}
+              active={pathname.startsWith("/settings")}
+            />
+            {user && (
+              <Link
+                href="/settings?section=profile"
+                className="mt-2 flex items-center gap-3 rounded-2xl px-2 py-2 hover:bg-canvas"
+              >
+                <Avatar name={user.name} url={user.avatarUrl} />
+                <span className="hidden min-w-0 lg:block">
+                  <span className="block truncate text-sm font-semibold text-ink">
+                    {user.name}
+                  </span>
+                  <span className="block text-xs text-muted">Free plan</span>
+                </span>
+              </Link>
+            )}
+          </div>
+        </aside>
+
+        <div className="md:pl-20 lg:pl-64">
+          <TopBar onOpenPicker={() => setPickerOpen(true)} />
+          <main className="mx-auto max-w-[1240px] px-4 pt-6 pb-28 sm:px-6 md:pb-12 lg:px-10">
+            {children}
+          </main>
+        </div>
+
+        {/* Phone bottom tabs */}
+        <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-white/95 backdrop-blur md:hidden">
+          {mobileTabs.map((item) => (
+            <MobileTab
               key={item.href}
-              item={item}
+              href={item.href}
+              label={item.label
+                .replace("Skin scan", "Scan")
+                .replace("My plan", "Plan")}
+              icon={item.icon}
               active={isActive(pathname, item)}
             />
           ))}
+          <button
+            onClick={() => setMoreOpen(true)}
+            className="flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium text-muted"
+          >
+            <MoreHorizontal size={20} /> More
+          </button>
         </nav>
-        <div className="space-y-1 border-t border-line px-3 py-4">
-          <SideLink
-            item={{ href: "/settings", label: "Settings", icon: Settings }}
-            active={pathname.startsWith("/settings")}
-          />
-          {user && (
-            <Link
-              href="/settings?section=profile"
-              className="mt-2 flex items-center gap-3 rounded-2xl px-2 py-2 hover:bg-canvas"
-            >
-              <Avatar name={user.name} url={user.avatarUrl} />
-              <span className="hidden min-w-0 lg:block">
-                <span className="block truncate text-sm font-semibold text-ink">
-                  {user.name}
-                </span>
-                <span className="block text-xs text-muted">Free plan</span>
-              </span>
-            </Link>
-          )}
-        </div>
-      </aside>
 
-      <div className="md:pl-20 lg:pl-64">
-        <TopBar onOpenPicker={() => setPickerOpen(true)} />
-        <main className="mx-auto max-w-[1240px] px-4 pt-6 pb-28 sm:px-6 md:pb-12 lg:px-10">
-          {children}
-        </main>
+        <Modal open={moreOpen} onClose={() => setMoreOpen(false)} title="More">
+          <div className="grid grid-cols-2 gap-2">
+            {moreItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMoreOpen(false)}
+                className="flex items-center gap-3 rounded-2xl border border-line px-4 py-3 text-sm font-medium text-ink hover:border-brand-300"
+              >
+                <item.icon size={18} className="text-brand-500" /> {item.label}
+              </Link>
+            ))}
+          </div>
+        </Modal>
+
+        <CityPicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
+        <Suspense>
+          <ProductDrawer />
+        </Suspense>
+        <AiAttentionDialog />
       </div>
-
-      {/* Phone bottom tabs */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-white/95 backdrop-blur md:hidden">
-        {mobileTabs.map((item) => (
-          <MobileTab
-            key={item.href}
-            href={item.href}
-            label={item.label
-              .replace("Skin scan", "Scan")
-              .replace("My plan", "Plan")}
-            icon={item.icon}
-            active={isActive(pathname, item)}
-          />
-        ))}
-        <button
-          onClick={() => setMoreOpen(true)}
-          className="flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium text-muted"
-        >
-          <MoreHorizontal size={20} /> More
-        </button>
-      </nav>
-
-      <Modal open={moreOpen} onClose={() => setMoreOpen(false)} title="More">
-        <div className="grid grid-cols-2 gap-2">
-          {moreItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setMoreOpen(false)}
-              className="flex items-center gap-3 rounded-2xl border border-line px-4 py-3 text-sm font-medium text-ink hover:border-brand-300"
-            >
-              <item.icon size={18} className="text-brand-500" /> {item.label}
-            </Link>
-          ))}
-        </div>
-      </Modal>
-
-      <CityPicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
-      <Suspense>
-        <ProductDrawer />
-      </Suspense>
-    </div>
+    </AiStatusProvider>
   );
 }
 
@@ -272,6 +278,7 @@ function TopBar({ onOpenPicker }: { onOpenPicker: () => void }) {
             </span>
           </span>
         </button>
+        <AiModelBadge />
         <NotificationsMenu />
         <UserMenu />
       </div>
